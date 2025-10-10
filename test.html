@@ -21,8 +21,7 @@
       <br><br>
       <pre id="out"></pre>
     </div>
-
-    <script>
+ <script>
 const API_URL = './api/chat';
 const btn = document.getElementById('go');
 const out = document.getElementById('out');
@@ -38,9 +37,10 @@ btn.onclick = async () => {
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ message })
     });
-    const data = await res.json();
-    // Show EVERYTHING so we can debug
-    out.textContent = JSON.stringify(data, null, 2);
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { reply: text }; }
+    out.textContent = data.reply || 'No reply.';
   } catch (e) {
     out.textContent = 'Network error: ' + e.message;
   }
