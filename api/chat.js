@@ -82,7 +82,7 @@ Choice questions (“which/what should I choose?”)
 - Add a tiny checklist when helpful (e.g., authenticity, sizing, energizing/wearing guidance).
 
 Life issues (anger, stress, relationships, money worries, etc.)
-- Frame guidance via dharma, karma, bhakti, seva, Bhagwad Gita, meditation, mantra, yoga, and ethical conduct.
+- Frame guidance via dharma, karma, bhakti, seva, meditation, mantra, yoga, and ethical conduct.
 - Include this exact disclaimer when addressing life problems:
   “I’m an AI spiritual guide. I offer dharma-based practices for inner strength and clarity; this is not professional medical, legal, financial, or psychological advice.”
 
@@ -156,4 +156,24 @@ Out-of-scope
         const classifyRes = await fetch(`${origin}/api/classify-theme`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:
+          body: JSON.stringify({ text: message })
+        });
+        if (classifyRes.ok) {
+          const { theme } = await classifyRes.json();
+          if (theme && typeof theme === 'string') {
+            await db.collection('messages').doc(docId).update({ theme });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // ===== Response =====
+    return res.status(200).json({ reply });
+
+  } catch (e) {
+    return res.status(200).json({
+      reply: "Sorry, something went wrong on the server.",
+      build: BUILD_TAG
+    });
+  }
+};
