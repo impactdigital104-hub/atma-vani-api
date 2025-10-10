@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Atma Vani Test</title>
+<div style="max-width:600px;margin:40px auto;font-family:system-ui">
+  <h3>Atma Vani Test</h3>
+  <textarea id="q" rows="4" style="width:100%;"></textarea><br><br>
+  <button id="go">Ask</button>
+  <pre id="out" style="white-space:pre-wrap;margin-top:16px;"></pre>
+</div>
+<script>
+const btn = document.getElementById('go');
+btn.onclick = async () => {
+  const message = document.getElementById('q').value.trim();
+  const res = await fetch('./api/chat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ message })
+  });
+  const data = await res.json();
+  document.getElementById('out').textContent = data.reply || JSON.stringify(data);
+};
+</script>
