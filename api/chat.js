@@ -1,8 +1,9 @@
-// Chat endpoint + Firestore logging + Theme tagging (no streaming)
-// POST JSON: { "message": "your question" }
+// Chat endpoint: single OpenAI call returns { reply, theme }.
+// Logs every Q/A to Firestore with the theme. API response to the browser is { reply } only.
 
 const admin = require('firebase-admin');
 
+// ---- Firestore init (once) ----
 function initFirestoreOnce() {
   if (admin.apps.length === 0) {
     admin.initializeApp({
@@ -16,68 +17,56 @@ function initFirestoreOnce() {
   return admin.firestore();
 }
 
-async function classifyTheme(text) {
-  const THEMES = [
-    "Deities",
-    "Puja & Rituals",
-    "Festivals",
-    "Scripture & Philosophy",
-    "Life-challenges",
-    "Products/Isvara",
-    "Yatra Veda",
-    "Other"
-  ];
-  const prompt = `Classify the user's question into ONE of these themes: ${THEMES.join(", ")}.
-Return only the label. Question: """${text}"""`;
+// ---- Theme taxonomy (you can edit anytime) ----
+const THEMES = [
+  "Deities",
+  "Puja & Rituals",
+  "Festivals",
+  "Scripture & Philosophy",
+  "Life-challenges",
+  "Products/Isvara",
+  "Yatra Veda",
+  "Astrology",
+  "Temples",
+  "Other"
+];
 
-  const r = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      input: [{ role: "user", content: prompt }],
-      temperature: 0,
-      max_output_tokens: 10
-    })
-  });
-
-  if (!r.ok) return "Other";
-  const j = await r.json();
-  const label = (j.output_text || "").trim();
-  return THEMES.includes(label) ? label : "Other";
-}
-
+// ---- HTTP handler ----
 module.exports = async (req, res) => {
-  // CORS
+  // CORS (simple + OK for now)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Use POST /api/chat' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST /api/chat' });
 
   try {
+    // Read input
     const { message } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Missing "message" (string).' });
     }
 
-    const SYSTEM_PROMPT = `
+    // ---- Atma Vani system guidance (token-light) ----
+    const system = `
 You are Atma Vani, a Hindu Spiritual Guide. Stay within Hindu spirituality (deities, rituals, festivals, philosophy, devotional living) and Dharma-based guidance.
 Tone: warm, respectful, teacher-like; explain with context and simple steps.
 Sources: prefer Sanatani.life, PujaItems.co.in, YatraVeda.life; include deep links if known; never invent URLs. If unknown, direct to the main site.
 Recommendations: suggest relevant curated products/tours only with verified links; no prices; no itineraries unless provided.
 Boundaries: No medical/legal/financial/career advice. No guarantees.
 Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional product/tour links; 5) end with a gentle follow-up question.
-    `.trim();
+`.trim();
 
-    // Call OpenAI for the answer
-    const resp = await fetch("https://api.openai.com/v1/responses", {
+    // ---- Ask the model to return compact JSON { reply, theme } ----
+    const toolPrompt = `
+Return a compact JSON object ONLY with keys: "reply" and "theme".
+- "reply": your best answer text to the user's question.
+- "theme": EXACTLY ONE label from this list: ${THEMES.join(", ")}.
+Do NOT include backticks, code fences, or extra text—return raw JSON only.
+User question: """${message}"""
+`.trim();
+
+    const r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -86,37 +75,44 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
       body: JSON.stringify({
         model: "gpt-4o-mini",
         input: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: message }
+          { role: "system", content: system },
+          { role: "user", content: toolPrompt }
         ],
-        temperature: 0.3
+        temperature: 0.3,
+        max_output_tokens: 600
       })
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
+    if (!r.ok) {
+      const errText = await r.text();
       return res.status(500).json({ error: "OpenAI error", detail: errText });
     }
 
-    const data = await resp.json();
-    let reply =
-      data.output_text
-      || (Array.isArray(data.output)
-            ? data.output.map(m =>
-                Array.isArray(m.content)
-                  ? m.content.map(c => c.text || "").join(" ")
-                  : ""
-              ).join("\n").trim()
-            : "")
-      || (Array.isArray(data.content) && data.content[0]?.text)
-      || "Sorry, I couldn't generate a reply.";
+    const j = await r.json();
 
-    // Theme (non-blocking)
+    // Extract + robust parse (strip accidental fences/backticks)
+    let raw = j.output_text || "";
+    if (typeof raw === "string") {
+      raw = raw.trim();
+      if (raw.startsWith("```")) {
+        raw = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+      }
+    }
+
+    let reply = "Sorry, I couldn't generate a reply.";
     let theme = "Other";
-    try { theme = await classifyTheme(message); } catch (_) {}
+    try {
+      const obj = JSON.parse(raw);
+      if (obj && typeof obj.reply === "string") reply = obj.reply;
+      if (obj && typeof obj.theme === "string" && THEMES.includes(obj.theme)) {
+        theme = obj.theme;
+      }
+    } catch (_) {
+      // If parsing fails, fall back to raw text as reply
+      if (raw) reply = raw;
+    }
 
-    // Log to Firestore and report success/failure
-    let logged = false, logError = null;
+    // ---- Log to Firestore (best-effort; don't fail user if logging fails) ----
     try {
       const db = initFirestoreOnce();
       await db.collection('messages').add({
@@ -126,12 +122,12 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
         assistantReply: reply,
         theme
       });
-      logged = true;
-    } catch (e) {
-      logError = String(e);
+    } catch (_) {
+      // optional: console.error(_) in dev
     }
 
-    return res.status(200).json({ reply, theme, logged, logError });
+    // ---- Respond to the browser (clean) ----
+    return res.status(200).json({ reply });
   } catch (e) {
     return res.status(500).json({ error: 'Server error', detail: String(e) });
   }
