@@ -82,9 +82,12 @@ User question: """${message}"""
     });
 
     if (!r.ok) {
-      const errText = await r.text();
-      return res.status(200).json({ reply: `Sorry, I couldn't generate a reply. (Upstream error)` });
-    }
+  const errText = await r.text();
+  return res.status(200).json({
+    reply: "Upstream error from OpenAI.",
+    openai_error: errText
+  });
+}
 
     const j = await r.json();
 
