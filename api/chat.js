@@ -110,12 +110,8 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
     } catch (_) {}
 
     // 4) Respond with a tiny debug payload
-    return res.status(200).json({
-      reply,
-      build: BUILD_TAG,
-      docId,
-      classifiedTheme
-    });
+   return res.status(200).json({ reply });
+
   } catch (e) {
     return res.status(200).json({ reply: "Sorry, something went wrong on the server.", build: BUILD_TAG });
   }
