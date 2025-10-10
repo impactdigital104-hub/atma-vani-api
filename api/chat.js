@@ -58,7 +58,7 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
 Return ONLY a JSON object with exactly these keys: "reply" and "theme".
 - "reply": your best answer text to the user's question.
 - "theme": EXACTLY ONE label from this list: ${THEMES.join(", ")}.
-Do not include code fences or any extra text.
+No code fences or extra text.
 User question: """${message}"""
 `.trim();
 
@@ -69,38 +69,58 @@ User question: """${message}"""
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-  model: "gpt-4o-mini",
-  input: [
-    { role: "system", content: system },
-    { role: "user", content: toolPrompt }
-  ],
-  temperature: 0.3,
-  max_output_tokens: 600,
-  text: { format: "json" }   // <-- correct way for Responses API
-})
+        model: "gpt-4o-mini",
+        input: [
+          { role: "system", content: system },
+          { role: "user", content: toolPrompt }
+        ],
+        temperature: 0.3,
+        max_output_tokens: 600,
+        // Correct way to force JSON in the Responses API
+        text: { format: "json" }
+      })
+    });
+
     if (!r.ok) {
       const errText = await r.text();
-      return res.status(500).json({ error: "OpenAI error", detail: errText });
+      return res.status(200).json({ reply: `Sorry, I couldn't generate a reply. (Upstream error)` });
     }
 
     const j = await r.json();
-    let raw = j.output_text || "";
+
+    // ---- Robustly extract the raw text the Responses API produced ----
+    let raw =
+      j.output_text ||
+      (Array.isArray(j.output)
+        ? j.output
+            .map(m =>
+              Array.isArray(m.content)
+                ? m.content.map(c => c.text || "").join(" ")
+                : ""
+            )
+            .join("\n")
+            .trim()
+        : "") ||
+      (Array.isArray(j.content) && j.content[0]?.text) ||
+      "";
+
+    // ---- Parse { reply, theme } with safe fallback ----
     let reply = "Sorry, I couldn't generate a reply.";
     let theme = "Other";
-
-    // Strict parse first:
     try {
-      const obj = JSON.parse(raw);
-      if (obj && typeof obj.reply === "string") reply = obj.reply;
-      if (obj && typeof obj.theme === "string" && THEMES.includes(obj.theme)) {
-        theme = obj.theme;
+      if (raw && typeof raw === "string") {
+        const obj = JSON.parse(raw);
+        if (obj && typeof obj.reply === "string") reply = obj.reply;
+        if (obj && typeof obj.theme === "string" && THEMES.includes(obj.theme)) {
+          theme = obj.theme;
+        }
       }
     } catch {
-      // fallback: try other shapes or use raw text
+      // If model didn't return valid JSON despite the hint, fall back to raw text
       if (raw) reply = raw;
     }
 
-    // Log to Firestore (best-effort)
+    // ---- Log to Firestore (best-effort) ----
     try {
       const db = initFirestoreOnce();
       await db.collection('messages').add({
@@ -110,10 +130,13 @@ User question: """${message}"""
         assistantReply: reply,
         theme
       });
-    } catch {}
+    } catch {
+      // swallow logging errors
+    }
 
-    return res.status(200).json({ reply, theme, debug: { raw } });
+    return res.status(200).json({ reply });
   } catch (e) {
-    return res.status(500).json({ error: 'Server error', detail: String(e) });
+    // Always return JSON so the browser never tries to parse HTML
+    return res.status(200).json({ reply: "Sorry, something went wrong on the server." });
   }
 };
