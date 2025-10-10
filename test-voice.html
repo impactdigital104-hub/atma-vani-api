@@ -2,65 +2,50 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Atma Vani — Voice MVP (Step 3: STT → Chat)</title>
+  <title>Atma Vani — Voice MVP (Step 3.1: Auto-transcribe + Chat)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root {
-      --bg: #0e0f13;
-      --card: #151824;
-      --text: #e9eef7;
-      --muted: #a9b3c7;
-      --accent: #6ea8fe;
-      --good: #27c093;
-      --bad: #ff6b6b;
-      --warn: #ffb020;
-      --border: #23273a;
-    }
-    html, body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
-    .wrap { max-width: 960px; margin: 40px auto; padding: 0 16px; }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
-    h1 { font-size: 24px; margin: 0 0 6px; }
-    p.sub { margin: 0 0 20px; color: var(--muted); }
-    .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    button { appearance: none; border: 1px solid var(--border); background: #1b2030; color: var(--text); padding: 12px 16px; border-radius: 12px; cursor: pointer; font-size: 15px; transition: 0.15s ease; }
-    button:hover { background: #1e2538; }
-    button.primary { background: var(--accent); color: #0b1220; border-color: transparent; }
-    button.danger { background: var(--bad); color: #0b1220; border-color: transparent; }
-    .status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); background: #121623; color: var(--muted); font-size: 14px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 0 rgba(255,0,0,0); }
-    .dot.live { background: var(--bad); box-shadow: 0 0 0 6px rgba(255, 0, 0, 0.15); animation: pulse 1.2s infinite ease-in-out; }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.2);} 70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);} 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);} }
-    .kv { display: grid; grid-template-columns: 160px 1fr; gap: 10px 16px; margin: 16px 0; font-size: 14px; }
-    .kv div { color: var(--muted); } .kv div.value { color: var(--text); }
-    .panel { border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 16px; }
-    .note { background: #101521; border: 1px solid var(--border); color: var(--muted); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
-    audio { width: 100%; margin-top: 10px; }
-    a.download { color: var(--accent); text-decoration: none; border: 1px solid var(--border); padding: 8px 12px; border-radius: 10px; display: inline-block; }
-    .warn { color: var(--warn); } .ok { color: var(--good); } .hidden { display: none !important; }
-    code { background: #0f1421; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13px; white-space: pre-wrap; }
-    .reply { white-space: pre-wrap; line-height: 1.55; }
-    .toggle { display:flex; align-items:center; gap:8px; color: var(--muted); font-size:14px; }
+    :root{--bg:#0e0f13;--card:#151824;--text:#e9eef7;--muted:#a9b3c7;--accent:#6ea8fe;--good:#27c093;--bad:#ff6b6b;--warn:#ffb020;--border:#23273a}
+    html,body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0}
+    .wrap{max-width:960px;margin:40px auto;padding:0 16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{font-size:24px;margin:0 0 6px} .sub{margin:0 0 20px;color:var(--muted)}
+    .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    button{appearance:none;border:1px solid var(--border);background:#1b2030;color:var(--text);padding:12px 16px;border-radius:12px;cursor:pointer;font-size:15px;transition:.15s}
+    button:hover{background:#1e2538} .primary{background:var(--accent);color:#0b1220;border-color:transparent}
+    .danger{background:var(--bad);color:#0b1220;border-color:transparent}
+    .status{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);background:#121623;color:var(--muted);font-size:14px}
+    .dot{width:10px;height:10px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 0 rgba(255,0,0,0)}
+    .dot.live{background:var(--bad);box-shadow:0 0 0 6px rgba(255,0,0,.15);animation:pulse 1.2s infinite ease-in-out}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,0,0,.2)}70%{box-shadow:0 0 0 10px rgba(255,0,0,0)}100%{box-shadow:0 0 0 0 rgba(255,0,0,0)}}
+    .kv{display:grid;grid-template-columns:160px 1fr;gap:10px 16px;margin:16px 0;font-size:14px}
+    .kv div{color:var(--muted)} .kv .value{color:var(--text)}
+    .panel{border-top:1px dashed var(--border);margin-top:16px;padding-top:16px}
+    .note{background:#101521;border:1px solid var(--border);color:var(--muted);border-radius:12px;padding:12px 14px;font-size:14px}
+    audio{width:100%;margin-top:10px} .download{color:var(--accent);text-decoration:none;border:1px solid var(--border);padding:8px 12px;border-radius:10px;display:inline-block}
+    .warn{color:var(--warn)} .ok{color:var(--good)} .hidden{display:none!important}
+    code{background:#0f1421;padding:2px 6px;border-radius:6px;border:1px solid var(--border)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:13px;white-space:pre-wrap}
+    .reply{white-space:pre-wrap;line-height:1.55}
+    .toggle{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
       <h1>Atma Vani — Voice MVP</h1>
-      <p class="sub">Step 3: After transcription, we automatically send the text to <code>/api/chat</code> and show the assistant’s reply.</p>
+      <p class="sub">Step 3.1: Auto-transcribe on Stop, then auto-send to <code>/api/chat</code> (toggleable).</p>
 
       <div id="supportMsg" class="note hidden"></div>
 
-      <div class="row" style="margin: 12px 0 6px;">
+      <div class="row" style="margin:12px 0 6px;">
         <span class="status"><span id="dot" class="dot"></span><span id="stateLabel">Idle</span></span>
         <button id="btnRecord" class="primary">🎙️ Start Recording</button>
         <button id="btnStop" class="danger" disabled>⏹️ Stop</button>
         <button id="btnReset" disabled>🔁 Reset</button>
         <button id="btnTranscribe" disabled>📝 Transcribe</button>
-        <label class="toggle">
-          <input type="checkbox" id="autoChat" checked />
-          Auto-send to Chat after STT
-        </label>
+        <label class="toggle"><input type="checkbox" id="autoSTT" checked /> Auto-transcribe on Stop</label>
+        <label class="toggle"><input type="checkbox" id="autoChat" checked /> Auto-send to Chat after STT</label>
         <button id="btnSendToChat" disabled>➡️ Send to Chat</button>
       </div>
 
@@ -73,10 +58,10 @@
       </div>
 
       <div class="panel">
-        <div class="note" id="httpsNote" style="margin-bottom: 12px;"></div>
+        <div class="note" id="httpsNote" style="margin-bottom:12px;"></div>
         <strong>Preview</strong>
         <audio id="player" controls class="hidden"></audio>
-        <div id="downloadWrap" class="hidden" style="margin-top: 10px;">
+        <div id="downloadWrap" class="hidden" style="margin-top:10px;">
           <a id="downloadLink" class="download" download="atma-vani-recording.webm">⬇️ Download recording</a>
         </div>
       </div>
@@ -99,242 +84,114 @@
 
       <div class="panel">
         <strong>What’s next?</strong>
-        <p class="sub">If this works, Step 4 will add <code>/api/tts</code> so the reply is spoken aloud.</p>
+        <p class="sub">Next we’ll add <code>/api/tts</code> so the reply is spoken aloud.</p>
       </div>
     </div>
   </div>
 
   <script>
-    // ---------- UI refs ----------
     const ui = {
-      supportMsg: document.getElementById('supportMsg'),
-      httpsNote: document.getElementById('httpsNote'),
-      btnRecord: document.getElementById('btnRecord'),
-      btnStop: document.getElementById('btnStop'),
-      btnReset: document.getElementById('btnReset'),
-      btnTranscribe: document.getElementById('btnTranscribe'),
-      btnSendToChat: document.getElementById('btnSendToChat'),
-      autoChat: document.getElementById('autoChat'),
-      micStatus: document.getElementById('micStatus'),
-      fmt: document.getElementById('fmt'),
-      timer: document.getElementById('timer'),
-      size: document.getElementById('size'),
-      chunks: document.getElementById('chunks'),
-      player: document.getElementById('player'),
-      downloadWrap: document.getElementById('downloadWrap'),
-      downloadLink: document.getElementById('downloadLink'),
-      dot: document.getElementById('dot'),
-      stateLabel: document.getElementById('stateLabel'),
-      txStatus: document.getElementById('txStatus'),
-      transcript: document.getElementById('transcript'),
-      chatStatus: document.getElementById('chatStatus'),
-      reply: document.getElementById('reply'),
-      debugJson: document.getElementById('debugJson'),
+      supportMsg: q('#supportMsg'), httpsNote: q('#httpsNote'),
+      btnRecord: q('#btnRecord'), btnStop: q('#btnStop'), btnReset: q('#btnReset'),
+      btnTranscribe: q('#btnTranscribe'), btnSendToChat: q('#btnSendToChat'),
+      autoSTT: q('#autoSTT'), autoChat: q('#autoChat'),
+      micStatus: q('#micStatus'), fmt: q('#fmt'), timer: q('#timer'),
+      size: q('#size'), chunks: q('#chunks'), player: q('#player'),
+      downloadWrap: q('#downloadWrap'), downloadLink: q('#downloadLink'),
+      dot: q('#dot'), stateLabel: q('#stateLabel'),
+      txStatus: q('#txStatus'), transcript: q('#transcript'),
+      chatStatus: q('#chatStatus'), reply: q('#reply'), debugJson: q('#debugJson')
     };
+    function q(s){return document.querySelector(s)}
 
-    // ---------- HTTPS & support notes ----------
-    (function showContextNotes() {
-      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+    (function notes(){
+      if (location.protocol!=='https:' && location.hostname!=='localhost'){
         ui.httpsNote.classList.remove('hidden');
-        ui.httpsNote.innerHTML = '⚠️ Microphone access typically requires HTTPS. Use HTTPS or localhost.';
-      } else {
-        ui.httpsNote.classList.add('hidden');
-      }
-      const supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && 'MediaRecorder' in window;
-      if (!supported) {
-        ui.supportMsg.classList.remove('hidden');
-        ui.supportMsg.innerHTML = '❌ Your browser does not support <code>MediaRecorder</code> or <code>getUserMedia</code>. Use latest Chrome desktop.';
-        ui.btnRecord.disabled = true;
-      } else {
-        ui.supportMsg.classList.add('hidden');
-      }
+        ui.httpsNote.innerHTML='⚠️ Microphone access typically requires HTTPS. Use HTTPS or localhost.';
+      } else ui.httpsNote.classList.add('hidden');
+      const ok = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && 'MediaRecorder' in window;
+      if (!ok){ ui.supportMsg.classList.remove('hidden'); ui.supportMsg.innerHTML='❌ This browser lacks mic recording support (try latest Chrome).'; ui.btnRecord.disabled=true; }
     })();
 
-    // ---------- helpers ----------
-    function chooseAudioType() {
-      const candidates = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
-      for (const type of candidates) if (MediaRecorder.isTypeSupported(type)) return type;
-      return '';
-    }
-    function prettyBytes(bytes) {
-      if (bytes === 0) return '0 KB';
-      const units = ['B','KB','MB','GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(1024));
-      return (bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + units[i];
-    }
-    let t0 = 0, rafId = null;
-    function startTimer() {
-      t0 = performance.now();
-      function tick() {
-        const ms = performance.now() - t0;
-        const sec = Math.floor(ms / 1000);
-        const tenths = Math.floor((ms % 1000) / 100);
-        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
-        const ss = String(sec % 60).padStart(2, '0');
-        ui.timer.textContent = `${mm}:${ss}.${tenths}`;
-        rafId = requestAnimationFrame(tick);
-      }
-      tick();
-    }
-    function stopTimer() { if (rafId) cancelAnimationFrame(rafId); rafId = null; }
+    function chooseAudioType(){ const c=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg']; for(const t of c) if(MediaRecorder.isTypeSupported(t)) return t; return '' }
+    function prettyBytes(b){ if(!b) return '0 KB'; const u=['B','KB','MB','GB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i] }
 
-    // ---------- recorder state ----------
-    let stream = null, recorder = null, chunks = [], bytesAccum = 0, recordedBlob = null;
-    let mimeTypeChosen = chooseAudioType();
-    ui.fmt.textContent = mimeTypeChosen || 'Browser default';
+    let t0=0, raf=null; function startTimer(){ t0=performance.now(); (function tick(){ const ms=performance.now()-t0; const s=Math.floor(ms/1000), d=Math.floor((ms%1000)/100); const mm=String(Math.floor(s/60)).padStart(2,'0'), ss=String(s%60).padStart(2,'0'); ui.timer.textContent=`${mm}:${ss}.${d}`; raf=requestAnimationFrame(tick) })() } function stopTimer(){ if(raf) cancelAnimationFrame(raf); raf=null }
 
-    function setState(isRecording) {
-      ui.btnRecord.disabled = isRecording;
-      ui.btnStop.disabled = !isRecording;
-      ui.btnReset.disabled = isRecording || (!recordedBlob && chunks.length === 0);
-      ui.btnTranscribe.disabled = !recordedBlob || isRecording;
-      ui.btnSendToChat.disabled = !(ui.transcript.textContent && !isRecording);
-      ui.stateLabel.textContent = isRecording ? 'Recording…' : (recordedBlob ? 'Recorded' : 'Idle');
-      ui.dot.classList.toggle('live', isRecording);
+    let stream=null, recorder=null, chunks=[], bytes=0, blob=null;
+    const mime=chooseAudioType(); ui.fmt.textContent=mime||'Browser default';
+
+    function setState(rec){
+      ui.btnRecord.disabled=rec; ui.btnStop.disabled=!rec;
+      ui.btnReset.disabled=rec || (!blob && chunks.length===0);
+      ui.btnTranscribe.disabled=!blob || rec; ui.btnSendToChat.disabled=!(ui.transcript.textContent && !rec);
+      ui.stateLabel.textContent=rec?'Recording…':(blob?'Recorded':'Idle'); ui.dot.classList.toggle('live',rec);
     }
 
-    async function ensureMicStream() {
-      if (stream) return stream;
-      ui.micStatus.textContent = 'Requesting permission…';
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        ui.micStatus.innerHTML = '<span class="ok">Granted</span>';
-        return stream;
-      } catch (err) {
-        ui.micStatus.innerHTML = '<span class="warn">Denied / Not available</span>';
-        throw err;
-      }
-    }
+    async function ensureMic(){ if(stream) return stream; ui.micStatus.textContent='Requesting permission…'; stream=await navigator.mediaDevices.getUserMedia({audio:true}); ui.micStatus.innerHTML='<span class="ok">Granted</span>'; return stream }
 
-    function resetAll() {
-      if (recorder && recorder.state !== 'inactive') { try { recorder.stop(); } catch {} }
-      if (stream) { for (const track of stream.getTracks()) track.stop(); stream = null; }
-      recorder = null; chunks = []; bytesAccum = 0; recordedBlob = null;
-      ui.player.src = ''; ui.player.classList.add('hidden');
-      ui.downloadWrap.classList.add('hidden');
-      ui.size.textContent = '0 KB'; ui.chunks.textContent = '0';
-      ui.timer.textContent = '00:00.0'; ui.micStatus.textContent = 'Not requested';
-      ui.transcript.textContent = ''; ui.txStatus.textContent = 'Status: waiting for a recording…';
-      ui.reply.textContent = ''; ui.chatStatus.textContent = 'Status: waiting for a transcript…';
-      ui.debugJson.textContent = '';
+    function resetAll(){
+      if(recorder && recorder.state!=='inactive'){ try{recorder.stop()}catch{} }
+      if(stream){ for(const t of stream.getTracks()) t.stop(); stream=null; }
+      recorder=null; chunks=[]; bytes=0; blob=null;
+      ui.player.src=''; ui.player.classList.add('hidden'); ui.downloadWrap.classList.add('hidden');
+      ui.size.textContent='0 KB'; ui.chunks.textContent='0'; ui.timer.textContent='00:00.0'; ui.micStatus.textContent='Not requested';
+      ui.transcript.textContent=''; ui.txStatus.textContent='Status: waiting for a recording…'; ui.reply.textContent=''; ui.chatStatus.textContent='Status: waiting for a transcript…'; ui.debugJson.textContent='';
       setState(false);
     }
-
     ui.btnReset.addEventListener('click', resetAll);
 
-    ui.btnRecord.addEventListener('click', async () => {
-      try {
-        await ensureMicStream();
-        chunks = []; bytesAccum = 0; recordedBlob = null;
-        setState(true);
-        ui.player.classList.add('hidden');
-        ui.downloadWrap.classList.add('hidden');
-        ui.transcript.textContent = '';
-        ui.txStatus.textContent = 'Status: recording…';
-        ui.reply.textContent = ''; ui.chatStatus.textContent = 'Status: waiting for a transcript…';
-        ui.debugJson.textContent = '';
-
-        recorder = new MediaRecorder(stream, mimeTypeChosen ? { mimeType: mimeTypeChosen } : undefined);
-        recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            chunks.push(e.data); bytesAccum += e.data.size;
-            ui.size.textContent = prettyBytes(bytesAccum);
-            ui.chunks.textContent = String(chunks.length);
-          }
-        };
-        recorder.onstart = () => { startTimer(); };
-        recorder.onstop = () => {
+    ui.btnRecord.addEventListener('click', async ()=>{
+      try{
+        await ensureMic(); chunks=[]; bytes=0; blob=null; setState(true);
+        ui.player.classList.add('hidden'); ui.downloadWrap.classList.add('hidden'); ui.transcript.textContent=''; ui.txStatus.textContent='Status: recording…'; ui.reply.textContent=''; ui.chatStatus.textContent='Status: waiting for a transcript…'; ui.debugJson.textContent='';
+        recorder=new MediaRecorder(stream, mime?{mimeType:mime}:undefined);
+        recorder.ondataavailable=e=>{ if(e.data && e.data.size>0){ chunks.push(e.data); bytes+=e.data.size; ui.size.textContent=prettyBytes(bytes); ui.chunks.textContent=String(chunks.length); } };
+        recorder.onstart=()=>startTimer();
+        recorder.onstop=async ()=>{
           stopTimer();
-          const type = mimeTypeChosen || recorder.mimeType || 'audio/webm';
-          recordedBlob = new Blob(chunks, { type });
-          window.lastRecordingBlob = recordedBlob;
-          const url = URL.createObjectURL(recordedBlob);
-          ui.player.src = url; ui.player.classList.remove('hidden');
-          ui.downloadLink.href = url; ui.downloadWrap.classList.remove('hidden');
-          ui.txStatus.textContent = 'Status: ready to transcribe.';
-          setState(false);
+          const type=mime || recorder.mimeType || 'audio/webm';
+          blob=new Blob(chunks,{type}); window.lastRecordingBlob=blob;
+          const url=URL.createObjectURL(blob); ui.player.src=url; ui.player.classList.remove('hidden'); ui.downloadLink.href=url; ui.downloadWrap.classList.remove('hidden');
+          ui.txStatus.textContent='Status: ready to transcribe.'; setState(false);
+          if (ui.autoSTT.checked) { await transcribe(); }
         };
         recorder.start(250);
-      } catch (err) {
-        console.error('Record error:', err);
-        alert('Could not start recording. Check mic permissions and try again.');
-        setState(false);
-      }
+      }catch(e){ console.error(e); alert('Could not start recording. Check mic permission.'); setState(false); }
     });
 
-    ui.btnStop.addEventListener('click', () => {
-      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch {} }
-      if (stream) { for (const track of stream.getTracks()) track.stop(); stream = null; }
+    ui.btnStop.addEventListener('click', ()=>{
+      if(recorder && recorder.state==='recording'){ try{recorder.stop()}catch{} }
+      if(stream){ for(const t of stream.getTracks()) t.stop(); stream=null; }
     });
 
-    // ---------- STT call ----------
-    ui.btnTranscribe.addEventListener('click', async () => {
-      if (!window.lastRecordingBlob) return alert('Please record something first.');
-      ui.txStatus.textContent = 'Status: uploading for transcription…';
-
-      try {
-        const fd = new FormData();
-        const file = new File([window.lastRecordingBlob], 'recording.webm', { type: window.lastRecordingBlob.type || 'audio/webm' });
-        fd.append('file', file);
-
-        const resp = await fetch('/api/stt', { method: 'POST', body: fd });
-        if (!resp.ok) {
-          const err = await safeJson(resp);
-          throw new Error(err?.error || `HTTP ${resp.status}`);
-        }
-        const data = await resp.json();
-        ui.txStatus.textContent = `Status: transcribed in ${data?.sttMs ?? '–'} ms.`;
-        const text = data?.text || '';
-        ui.transcript.textContent = text;
-        setState(false);
-
-        // Auto-send to chat if toggled on
-        if (ui.autoChat.checked && text) {
-          await sendToChat(text);
-        } else {
-          ui.btnSendToChat.disabled = !text;
-        }
-      } catch (e) {
-        console.error(e);
-        ui.txStatus.textContent = 'Status: transcription failed. Please retry.';
-        alert(`Transcription error: ${e.message}`);
-      }
-    });
-
-    // ---------- Chat call ----------
-    ui.btnSendToChat.addEventListener('click', async () => {
-      const text = ui.transcript.textContent.trim();
-      if (!text) return alert('No transcript to send. Please transcribe first.');
-      await sendToChat(text);
-    });
-
-    async function sendToChat(messageText) {
-      ui.chatStatus.textContent = 'Status: thinking…';
-      ui.reply.textContent = '';
-      ui.debugJson.textContent = '';
-      try {
-        const r = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: messageText })
-        });
-        if (!r.ok) {
-          const err = await safeJson(r);
-          throw new Error(err?.error || `HTTP ${r.status}`);
-        }
-        const data = await r.json();
-        // Expecting { reply: "..." } from your existing api/chat.js
-        ui.reply.textContent = data?.reply || '(no reply text returned)';
-        ui.debugJson.textContent = JSON.stringify(data, null, 2);
-        ui.chatStatus.textContent = 'Status: reply received.';
-      } catch (e) {
-        console.error(e);
-        ui.chatStatus.textContent = 'Status: chat failed. Please retry.';
-        alert(`Chat error: ${e.message}`);
-      }
+    ui.btnTranscribe.addEventListener('click', transcribe);
+    async function transcribe(){
+      if(!window.lastRecordingBlob){ alert('Please record something first.'); return; }
+      ui.txStatus.textContent='Status: uploading for transcription…';
+      try{
+        const fd=new FormData(); const file=new File([window.lastRecordingBlob],'recording.webm',{type:window.lastRecordingBlob.type||'audio/webm'}); fd.append('file',file);
+        const resp=await fetch('/api/stt',{method:'POST',body:fd});
+        if(!resp.ok){ const err=await safeJson(resp); throw new Error(err?.error||`HTTP ${resp.status}`); }
+        const data=await resp.json(); const text=data?.text||''; ui.txStatus.textContent=`Status: transcribed in ${data?.sttMs ?? '–'} ms.`; ui.transcript.textContent=text; setState(false);
+        if (ui.autoChat.checked && text){ await sendToChat(text); } else { ui.btnSendToChat.disabled=!text; }
+      }catch(e){ console.error(e); ui.txStatus.textContent='Status: transcription failed. Please retry.'; alert(`Transcription error: ${e.message}`); }
     }
 
-    async function safeJson(r) { try { return await r.json(); } catch { return null; } }
+    ui.btnSendToChat.addEventListener('click', async ()=>{
+      const text=ui.transcript.textContent.trim(); if(!text) return alert('No transcript to send. Please transcribe first.'); await sendToChat(text);
+    });
+
+    async function sendToChat(messageText){
+      ui.chatStatus.textContent='Status: thinking…'; ui.reply.textContent=''; ui.debugJson.textContent='';
+      try{
+        const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:messageText})});
+        if(!r.ok){ const err=await safeJson(r); throw new Error(err?.error||`HTTP ${r.status}`); }
+        const data=await r.json(); ui.reply.textContent=data?.reply||'(no reply text returned)'; ui.debugJson.textContent=JSON.stringify(data,null,2); ui.chatStatus.textContent='Status: reply received.';
+      }catch(e){ console.error(e); ui.chatStatus.textContent='Status: chat failed. Please retry.'; alert(`Chat error: ${e.message}`); }
+    }
+
+    async function safeJson(r){ try{return await r.json()}catch{return null} }
   </script>
 </body>
 </html>
