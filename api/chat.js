@@ -1,7 +1,7 @@
-// Chat endpoint (stable): gets reply, writes to Firestore with theme: "Other",
-// then calls /api/classify-theme and updates the doc with the detected theme.
+// Chat endpoint (with build tag + guaranteed theme field)
 
 const admin = require('firebase-admin');
+const BUILD_TAG = 'chat-v3-theme-default'; // <- shows up in Firestore & response
 
 function initFirestoreOnce() {
   if (admin.apps.length === 0) {
@@ -39,7 +39,7 @@ Boundaries: No medical/legal/financial/career advice. No guarantees.
 Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional product/tour links; 5) end with a gentle follow-up question.
     `.trim();
 
-    // 1) Get reply from OpenAI (the simple, stable call)
+    // 1) Ask OpenAI for the reply (stable/simple)
     let reply = "Sorry, I couldn't generate a reply.";
     try {
       const r = await fetch("https://api.openai.com/v1/responses", {
@@ -57,7 +57,6 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
           temperature: 0.3
         })
       });
-
       if (r.ok) {
         const data = await r.json();
         reply =
@@ -72,11 +71,9 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
           || (Array.isArray(data.content) && data.content[0]?.text)
           || reply;
       }
-    } catch (_) {
-      // keep default reply on error
-    }
+    } catch (_) {}
 
-    // 2) Save to Firestore with a DEFAULT theme so you always see it
+    // 2) Save to Firestore with DEFAULT theme so the field is present
     const db = initFirestoreOnce();
     let docId = null;
     try {
@@ -85,17 +82,16 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
         source: 'vercel-api',
         userMessage: message,
         assistantReply: reply,
-        theme: "Other"       // <-- default so the field is present
+        theme: "Other",           // <= guaranteed field
+        build: BUILD_TAG          // <= for us to confirm deployment
       });
       docId = ref.id;
-    } catch (_) {
-      // even if logging fails, still return reply
-    }
+    } catch (_) {}
 
-    // 3) Call the classifier with an ABSOLUTE URL and update the theme
+    // 3) Try to classify and update (non-blocking)
+    let classifiedTheme = null;
     try {
       if (docId) {
-        // Build absolute origin from the incoming request (most reliable)
         const host = (req.headers && req.headers.host) || process.env.VERCEL_URL || "";
         const origin = `https://${String(host).replace(/^https?:\/\//, '')}`;
         const classifyRes = await fetch(`${origin}/api/classify-theme`, {
@@ -106,17 +102,21 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
         if (classifyRes.ok) {
           const { theme } = await classifyRes.json();
           if (theme && typeof theme === 'string') {
+            classifiedTheme = theme;
             await db.collection('messages').doc(docId).update({ theme });
           }
         }
       }
-    } catch (_) {
-      // never block the user on tagging issues
-    }
+    } catch (_) {}
 
-    // 4) Done
-    return res.status(200).json({ reply });
+    // 4) Respond with a tiny debug payload
+    return res.status(200).json({
+      reply,
+      build: BUILD_TAG,
+      docId,
+      classifiedTheme
+    });
   } catch (e) {
-    return res.status(200).json({ reply: "Sorry, something went wrong on the server." });
+    return res.status(200).json({ reply: "Sorry, something went wrong on the server.", build: BUILD_TAG });
   }
 };
