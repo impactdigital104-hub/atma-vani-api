@@ -17,7 +17,7 @@ function initFirestoreOnce() {
   return admin.firestore();
 }
 
-// ---- Theme taxonomy (you can edit anytime) ----
+// ---- Theme taxonomy ----
 const THEMES = [
   "Deities",
   "Puja & Rituals",
@@ -31,9 +31,8 @@ const THEMES = [
   "Other"
 ];
 
-// ---- HTTP handler ----
 module.exports = async (req, res) => {
-  // CORS (simple + OK for now)
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -41,13 +40,11 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST /api/chat' });
 
   try {
-    // Read input
     const { message } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Missing "message" (string).' });
     }
 
-    // ---- Atma Vani system guidance (token-light) ----
     const system = `
 You are Atma Vani, a Hindu Spiritual Guide. Stay within Hindu spirituality (deities, rituals, festivals, philosophy, devotional living) and Dharma-based guidance.
 Tone: warm, respectful, teacher-like; explain with context and simple steps.
@@ -57,12 +54,11 @@ Boundaries: No medical/legal/financial/career advice. No guarantees.
 Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional product/tour links; 5) end with a gentle follow-up question.
 `.trim();
 
-    // ---- Ask the model to return compact JSON { reply, theme } ----
     const toolPrompt = `
-Return a compact JSON object ONLY with keys: "reply" and "theme".
+Return ONLY a JSON object with exactly these keys: "reply" and "theme".
 - "reply": your best answer text to the user's question.
 - "theme": EXACTLY ONE label from this list: ${THEMES.join(", ")}.
-Do NOT include backticks, code fences, or extra text—return raw JSON only.
+Do not include code fences or any extra text.
 User question: """${message}"""
 `.trim();
 
@@ -79,7 +75,9 @@ User question: """${message}"""
           { role: "user", content: toolPrompt }
         ],
         temperature: 0.3,
-        max_output_tokens: 600
+        max_output_tokens: 600,
+        // force valid JSON
+        response_format: { type: "json_object" }
       })
     });
 
@@ -89,30 +87,23 @@ User question: """${message}"""
     }
 
     const j = await r.json();
-
-    // Extract + robust parse (strip accidental fences/backticks)
     let raw = j.output_text || "";
-    if (typeof raw === "string") {
-      raw = raw.trim();
-      if (raw.startsWith("```")) {
-        raw = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-      }
-    }
-
     let reply = "Sorry, I couldn't generate a reply.";
     let theme = "Other";
+
+    // Strict parse first:
     try {
       const obj = JSON.parse(raw);
       if (obj && typeof obj.reply === "string") reply = obj.reply;
       if (obj && typeof obj.theme === "string" && THEMES.includes(obj.theme)) {
         theme = obj.theme;
       }
-    } catch (_) {
-      // If parsing fails, fall back to raw text as reply
+    } catch {
+      // fallback: try other shapes or use raw text
       if (raw) reply = raw;
     }
 
-    // ---- Log to Firestore (best-effort; don't fail user if logging fails) ----
+    // Log to Firestore (best-effort)
     try {
       const db = initFirestoreOnce();
       await db.collection('messages').add({
@@ -122,11 +113,8 @@ User question: """${message}"""
         assistantReply: reply,
         theme
       });
-    } catch (_) {
-      // optional: console.error(_) in dev
-    }
+    } catch {}
 
-    // ---- Respond to the browser (clean) ----
     return res.status(200).json({ reply });
   } catch (e) {
     return res.status(500).json({ error: 'Server error', detail: String(e) });
