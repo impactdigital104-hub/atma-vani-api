@@ -1,5 +1,5 @@
-// Returns { theme } for a given text (via GET ?text=... or POST { text }).
-// Uses gpt-4o-mini with examples and forces JSON output.
+// Hybrid classifier: fast keyword rules first (deterministic), then model fallback.
+// Returns { theme } for GET ?text=... or POST { text }.
 
 const THEMES = [
   "Deities",
@@ -14,38 +14,113 @@ const THEMES = [
   "Other"
 ];
 
-function buildPrompt(text) {
-  return `
-Classify the user's text into EXACTLY ONE of these themes:
-${THEMES.join(", ")}
+// --- simple keyword buckets (add/change anytime) ---
+const RULES = [
+  // Temples
+  { theme: "Temples", kws: [
+    "temple", "mandir", "mandira", "devalaya",
+    "tirupati", "kedarnath", "badrinath", "dwarkadhish", "somnath",
+    "jagannath", "puri", "shirdi", "vaishno devi", "kamakhya", "meenakshi",
+    "char dham", "jyotirlinga", "darshan", "aarti timings", "opening time", "closing time"
+  ]},
 
-Return ONLY a JSON object like: {"theme":"Temples"}
+  // Festivals
+  { theme: "Festivals", kws: [
+    "festival", "utsav", "tithi", "date of", "when is", "celebrated",
+    "diwali", "deepavali", "navratri", "ganesh chaturthi", "mahashivratri",
+    "janmashtami", "ram navami", "makar sankranti", "holi", "raksha bandhan", "karwa chauth"
+  ]},
 
-Guidelines:
-- "Temples": temple names/locations/histories/darshan timings (e.g., Jagannath Mandir, Kedarnath, Tirupati).
-- "Festivals": festival dates/rituals/meaning (e.g., Diwali, Navratri, Ganesh Chaturthi).
-- "Puja & Rituals": how-to steps, materials, mantras for home/temple worship (e.g., Lakshmi puja at home).
-- "Deities": forms, attributes, stories, iconography of gods/goddesses (e.g., Shiva, Vishnu, Durga).
-- "Scripture & Philosophy": Bhagavad Gita, Upanishads, Puranas, Vedanta ideas, shlokas.
-- "Life-challenges": dharma/bhakti-based guidance for work, family, finances, relationships, health (no medical/legal/financial advice).
-- "Products/Isvara": rudraksha, yantra, incense, puja kits, malas, etc.
-- "Yatra Veda": pilgrimages, yatras, temple tours, travel planning for holy places.
-- "Astrology": kundli, doshas, nakshatras, remedies like mantras/fasts/gems (no predictions).
-- Otherwise: "Other".
+  // Puja & Rituals
+  { theme: "Puja & Rituals", kws: [
+    "puja", "pooja", "vrat", "vrata", "upvas", "fasting", "how to do", "steps for",
+    "materials for", "samagri", "mantra", "japa", "havan", "yajna", "archana", "abhishek"
+  ]},
 
-Examples (input → theme):
-- "Tell me about Jagannath Mandir" → "Temples"
-- "Where is Kedarnath temple located?" → "Temples"
-- "When is Diwali celebrated?" → "Festivals"
-- "How to do Lakshmi puja at home?" → "Puja & Rituals"
-- "Explain Bhagavad Gita Chapter 2" → "Scripture & Philosophy"
-- "I feel stuck at work; what should I pray?" → "Life-challenges"
-- "Which rudraksha helps for focus?" → "Products/Isvara"
-- "What is Manglik dosha?" → "Astrology"
-- "Plan a Char Dham yatra" → "Yatra Veda"
+  // Deities
+  { theme: "Deities", kws: [
+    "shiva", "vishnu", "krishna", "rama", "ganesha", "ganesh", "durga", "lakshmi", "saraswati",
+    "hanuman", "skanda", "murugan", "parvati", "mahadev", "narayana", "devi", "avatar", "incarnation"
+  ]},
 
+  // Scripture & Philosophy
+  { theme: "Scripture & Philosophy", kws: [
+    "bhagavad gita", "upanishad", "upanishads", "vedanta", "purana", "puranas", "smriti", "sruti",
+    "shloka", "sloka", "verse", "chapter", "adhyaya", "commentary", "philosophy", "dharma", "karma", "moksha"
+  ]},
+
+  // Astrology
+  { theme: "Astrology", kws: [
+    "kundli", "kundali", "janam kundli", "horoscope", "zodiac", "nakshatra", "graha", "planet",
+    "manglik", "mangal dosh", "dosha", "dasha", "gochar", "astrology", "jyotish", "remedies", "upay", "gemstone", "ratna"
+  ]},
+
+  // Products/Isvara
+  { theme: "Products/Isvara", kws: [
+    "rudraksha", "rudraksh", "yantra", "mala", "incense", "agarbatti", "camphor", "kapoor",
+    "puja kit", "oil lamp", "diya", "kumkum", "chandan", "vibhuti"
+  ]},
+
+  // Yatra Veda (pilgrimage/tours)
+  { theme: "Yatra Veda", kws: [
+    "yatra", "pilgrimage", "tour", "travel", "itinerary", "package", "darshan booking"
+  ]},
+
+  // Life-challenges
+  { theme: "Life-challenges", kws: [
+    "job", "career", "money", "finance", "relationship", "family", "marriage",
+    "stress", "anxiety", "peace of mind", "guidance", "advice", "help me"
+  ]},
+];
+
+// normalize and match
+function ruleClassify(text) {
+  const t = (text || "").toLowerCase();
+  for (const { theme, kws } of RULES) {
+    for (const kw of kws) {
+      if (t.includes(kw)) return theme;
+    }
+  }
+  return null;
+}
+
+async function modelFallback(text) {
+  // Very small prompt, forced JSON. Used only when rules fail.
+  const prompt = `
+Return ONLY {"theme":"..."} choosing ONE from:
+${THEMES.join(", ")}.
 User text: """${text.trim()}"""
 `.trim();
+
+  try {
+    const r = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [{ role: "user", content: prompt }],
+        temperature: 0,
+        max_output_tokens: 20,
+        text: { format: "json" }
+      })
+    });
+
+    if (!r.ok) return "Other";
+    const j = await r.json();
+    const raw = j.output_text || "";
+    try {
+      const obj = JSON.parse(raw);
+      const t = obj && typeof obj.theme === "string" ? obj.theme : "Other";
+      return THEMES.includes(t) ? t : "Other";
+    } catch {
+      return "Other";
+    }
+  } catch {
+    return "Other";
+  }
 }
 
 module.exports = async (req, res) => {
@@ -56,7 +131,6 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    // accept GET ?text=... or POST { text }
     let text = "";
     if (req.method === 'GET') {
       text = (req.query && req.query.text) || "";
@@ -66,42 +140,18 @@ module.exports = async (req, res) => {
       return res.status(405).json({ error: 'Use GET or POST' });
     }
 
-    if (typeof text !== 'string' || !text.trim()) {
+    if (!text || typeof text !== "string") {
       return res.status(400).json({ error: 'Missing "text" (string).' });
     }
 
-    const r = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: [{ role: "user", content: buildPrompt(text) }],
-        temperature: 0,
-        max_output_tokens: 40,
-        text: { format: "json" } // force valid JSON
-      })
-    });
+    // 1) Try rules
+    const rule = ruleClassify(text);
+    if (rule) return res.status(200).json({ theme: rule });
 
-    if (!r.ok) {
-      // keep it robust—fallback to Other if upstream is unhappy
-      return res.status(200).json({ theme: "Other" });
-    }
-
-    const j = await r.json();
-    const raw = (j && j.output_text) || "";
-    let theme = "Other";
-    try {
-      const obj = JSON.parse(raw);
-      if (obj && typeof obj.theme === "string" && THEMES.includes(obj.theme)) {
-        theme = obj.theme;
-      }
-    } catch (_) {}
-
+    // 2) Fallback to model
+    const theme = await modelFallback(text);
     return res.status(200).json({ theme });
-  } catch (e) {
+  } catch {
     return res.status(200).json({ theme: "Other" });
   }
 };
