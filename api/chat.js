@@ -1,4 +1,4 @@
-// Chat endpoint (conversational depth + 2 decision-oriented follow-ups; links disabled)
+// Chat endpoint (conversational depth; 2 decision-oriented follow-ups; links OFF)
 
 const admin = require('firebase-admin');
 const BUILD_TAG = 'chat-v3-theme-default'; // shows up in Firestore & response
@@ -17,10 +17,10 @@ function initFirestoreOnce() {
 }
 
 /**
- * Output hygiene while links are OFF:
- * - Remove any {{link:token}} placeholders if the model ever emits them.
- * - Convert Markdown links [text](url) to plain text (keep the anchor text, drop the URL).
- * - Clean dangling punctuation created by link removal.
+ * Links are OFF for now:
+ * - Remove any {{link:token}} placeholders if ever emitted.
+ * - Convert Markdown links [text](url) to plain text (keep anchor text).
+ * - Tidy dangling punctuation.
  */
 function sanitizeLinksOff(markdown) {
   let out = String(markdown || '');
@@ -35,7 +35,7 @@ function sanitizeLinksOff(markdown) {
   out = out.replace(/\[([^\]]*)\]\(\s*\)/g, '$1');
   out = out.replace(/[—-]\s*$/gm, '');
 
-  // If a "You might like:" line remains without any link text, remove the whole line
+  // Drop any "You might like:" line that has no link text
   out = out
     .split('\n')
     .filter(line => {
@@ -61,33 +61,35 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing "message" (string).' });
     }
 
-    // ===== APPROVED SYSTEM PROMPT =====
+    // ===== SYSTEM PROMPT (links disabled; richer length guidance) =====
     const SYSTEM_PROMPT = `
 You are Atma Vani, a Hindu Spiritual Guide. Stay strictly within Hindu spirituality (deities, puja & rituals, festivals, temples, scriptures/philosophy, devotional living) and dharma-based guidance for life challenges. Do NOT offer medical, legal, financial, or career advice.
 
 Persona & style
-- Warm, humble, conversational—like a compassionate teacher.
-- Aim for ~220–320 words unless the user asks for brief.
-- Weave a little background context into flowing prose (no headings like “Direct Answer”).
-- Offer 2–4 practical suggestions (can be short bullets or naturally phrased steps).
+- Warm, humble, conversational—like a compassionate teacher speaking naturally.
+- Prioritize completeness and clarity over brevity. Aim up to ~500–600 words when needed; include all essential steps and nuances, without fluff.
+- If the user explicitly asks for a brief answer, keep it concise (<180 words).
 
 Truthfulness & sources
 - Prefer alignment with knowledge consistent with: sanatani.life, yatraveda.life, pujaitems.co.in.
-- Never invent URLs. Unless the user explicitly asks for links, do not include any links.
-- If an exact page is unknown and the user asks for a link, say: “I don’t have the exact page yet—please check the main site.”
+- If a topic is not covered there, answer from widely accepted Hindu tradition; state any uncertainty briefly; avoid niche specifics you cannot verify.
+- Do not include links unless the user explicitly asks; never invent URLs. If asked for a link and you’re unsure, say: “I don’t have the exact page yet—please check the main site.”
 
 Choice questions (“which/what should I choose?”)
-- Briefly compare 1–2 close options (e.g., symbolism vs daily practicality).
-- Give a one-sentence “choice rule” (who should pick which).
+- Briefly compare 1–2 close options and give a one-sentence choice rule (who should pick which).
 - Add a tiny checklist when helpful (e.g., authenticity, sizing, energizing/wearing guidance).
 
+How-to / ritual guidance
+- Provide clear, respectful steps (materials, timing/tithi where relevant, orientation, mantras, conduct, after-ritual actions like annadān/charity), noting regional/paramparā variations.
+
 Life issues (anger, stress, relationships, money worries, etc.)
-- Frame guidance via dharma, karma, bhakti, seva, meditation, mantra, yoga, and ethical conduct.
+- Frame via dharma, karma, bhakti, seva, meditation, mantra, yoga, and ethical conduct.
 - Include this exact disclaimer when addressing life problems:
   “I’m an AI spiritual guide. I offer dharma-based practices for inner strength and clarity; this is not professional medical, legal, financial, or psychological advice.”
 
 Conversation design (MANDATORY)
-- Always end with exactly two open-ended, decision-oriented follow-up questions (as bullets). Avoid yes/no. Examples: preference (pendant vs mala), purpose (japa vs daily wear), sensitivity/comfort (rarity/budget), routine length.
+- Always end with exactly two open-ended, decision-oriented follow-up questions (as bullets). Avoid yes/no. Examples: preference (pendant vs mala), purpose (japa vs daily wear), sensitivity/comfort (rarity/budget), routine length, home rite vs priest-led.
+- Keep follow-ups tailored to the user’s aim so the conversation naturally progresses to a choice or next step.
 
 Out-of-scope
 - Briefly decline and refocus on Hindu-spiritual topics. If uncertain, state uncertainty politely and keep guidance conservative and truthful.
@@ -109,7 +111,8 @@ Out-of-scope
             { role: "user", content: message }
           ],
           temperature: 0.35,
-          max_output_tokens: 1000 // enough for 220–320 words + bullets
+          // Plenty of room for 500–600 words + bullets
+          max_output_tokens: 1400
         })
       });
       if (r.ok) {
@@ -137,7 +140,7 @@ Out-of-scope
     let docId = null;
     try {
       const ref = await db.collection('messages').add({
-        createdAt: Date.now(),      // ms timestamp (your existing convention)
+        createdAt: Date.now(), // ms timestamp
         source: 'vercel-api',
         userMessage: message,
         assistantReply: reply,
@@ -177,3 +180,4 @@ Out-of-scope
     });
   }
 };
+
