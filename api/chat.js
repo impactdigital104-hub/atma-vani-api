@@ -1,11 +1,9 @@
-// Chat endpoint (conversational style + deterministic links via tokens)
+// Chat endpoint (conversational style + deterministic links via tokens + follow-ups)
 
 const admin = require('firebase-admin');
 const BUILD_TAG = 'chat-v3-theme-default'; // shows up in Firestore & response
 
 // ===== LINK TOKENS → REAL URL MAP (EDIT THESE WHEN READY) =====
-// Start with a few you actually have live pages for.
-// If a token is missing here, it will be removed safely (no broken links).
 const LINK_MAP = {
   // --- PujaItems (examples — replace with real pages) ---
   // "rudraksha-collection": "https://pujaitems.co.in/collections/rudraksha-malas",
@@ -69,6 +67,12 @@ function applyLinkTokensAndSanitize(markdown) {
   // D) Remove dangling “—” at end of line (caused by dropped tokens)
   out = out.replace(/—\s*$/gm, '');
 
+  // E) If a "You might like:" line has no square-bracket link, remove that whole line.
+  out = out.split('\n').filter(line => {
+    if (/^\s*You might like:/i.test(line) && !/\[.+?\]\(/.test(line)) return false;
+    return true;
+  }).join('\n');
+
   return out;
 }
 
@@ -86,15 +90,15 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing "message" (string).' });
     }
 
-    // ===== Conversational system prompt (no visible section labels) =====
+    // ===== Conversational system prompt (now mandates 2 follow-ups) =====
     const SYSTEM_PROMPT = `
 You are Atma Vani, a Hindu Spiritual Guide. Stay strictly within Hindu spirituality (deities, puja & rituals, festivals, temples, scriptures/philosophy, devotional living) and dharma-based guidance for life challenges. Do NOT offer medical, legal, financial, or career advice.
 
 Persona & style:
 - Warm, humble, conversational—like a compassionate teacher speaking naturally.
-- Weave quick background context into flowing prose; avoid headings like “Direct Answer” or numbered section labels.
-- Offer 2–4 practical suggestions (can be short bullet points or natural sentences).
-- Aim for ~160–280 words unless the user asks for brief.
+- Weave brief background context into flowing prose; avoid headings like “Direct Answer” or numbered labels.
+- Offer 2–4 practical suggestions (short bullets or natural sentences).
+- Aim for ~180–300 words unless the user asks for brief.
 
 Truthfulness & sources:
 - Prefer alignment with sanatani.life, yatraveda.life, pujaitems.co.in.
@@ -112,6 +116,10 @@ Commercial mentions:
 Life issues:
 - Frame via dharma, karma, bhakti, seva, meditation, mantra, yoga, and ethical conduct.
 - If addressing a life problem, include: “I’m an AI spiritual guide… not professional medical, legal, financial, or psychological advice.”
+
+Conversation design (MANDATORY):
+- ALWAYS end with exactly **two** open-ended follow-up questions (bulleted), each inviting the user to continue the conversation.
+- Avoid yes/no questions; start with verbs (e.g., “Would you like to explore…”, “Shall we plan…”, “Which of these resonates…”).
 
 If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncertain, state the uncertainty. Keep answers kind, clear, and human.
     `.trim();
@@ -132,7 +140,7 @@ If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncer
             { role: "user", content: message }
           ],
           temperature: 0.35,
-          max_output_tokens: 900 // ↑ allow fuller, conversational replies
+          max_output_tokens: 950 // allows fuller conversational replies
         })
       });
       if (r.ok) {
