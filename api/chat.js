@@ -1,14 +1,13 @@
-// Chat endpoint (deterministic linking via tokens + guaranteed theme field)
+// Chat endpoint (conversational style + deterministic links via tokens)
 
 const admin = require('firebase-admin');
 const BUILD_TAG = 'chat-v3-theme-default'; // shows up in Firestore & response
 
-// ===== 0) LINK TOKENS → REAL URL MAP (EDIT THESE WHEN READY) =====
-// IMPORTANT: Start with a few tokens you actually have pages for.
-// Example tokens the model may output (per prompt): diwali-guide, char-dham-package, rudraksha-collection, lakshmi-puja-kit, jagannath-temple, mathura-vrindavan-tour, shiv-parvati-idols, lakshmi-puja-friday
-// Leave unmapped tokens out; unknown tokens are silently dropped.
+// ===== LINK TOKENS → REAL URL MAP (EDIT THESE WHEN READY) =====
+// Start with a few you actually have live pages for.
+// If a token is missing here, it will be removed safely (no broken links).
 const LINK_MAP = {
-  // --- PujaItems (examples — replace with your real pages) ---
+  // --- PujaItems (examples — replace with real pages) ---
   // "rudraksha-collection": "https://pujaitems.co.in/collections/rudraksha-malas",
   // "lakshmi-puja-kit": "https://pujaitems.co.in/products/lakshmi-puja-samagri-kit",
   // "shiv-parvati-idols": "https://pujaitems.co.in/collections/shiv-parvati-idols",
@@ -43,34 +42,38 @@ function initFirestoreOnce() {
   return admin.firestore();
 }
 
-// ===== 1) Sanitize model output: replace {{link:token}}; strip non-allowed domains =====
+// ===== Replace {{link:token}}; keep only whitelisted domains; tidy blanks =====
 function applyLinkTokensAndSanitize(markdown) {
   let out = String(markdown || '');
 
   // A) Replace token placeholders with real URLs (or drop if unknown)
-  //    Model will only output tokens; we swap them for safe links here.
   out = out.replace(/\{\{\s*link:([a-z0-9\-]+)\s*\}\}/gi, (_, token) => {
     const url = LINK_MAP[token];
     return url ? url : ''; // unknown token → remove quietly
   });
 
   // B) Strip any raw Markdown links pointing to non-whitelisted domains.
-  //    Keep the anchor text so the sentence still reads well.
   out = out.replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/gi, (m, text, url) => {
     try {
       const u = new URL(url);
-      if (ALLOWED_HOSTS.has(u.host)) return m; // allowed → keep as-is
-      return text; // not allowed → drop link but keep text
+      if (ALLOWED_HOSTS.has(u.host)) return m; // allowed
+      return text; // not allowed → keep anchor text only
     } catch {
       return text; // malformed URL → keep text
     }
   });
 
+  // C) If a link ended up with empty URL "[]()", replace with just the text.
+  out = out.replace(/\[([^\]]+)\]\(\s*\)/g, '$1');
+
+  // D) Remove dangling “—” at end of line (caused by dropped tokens)
+  out = out.replace(/—\s*$/gm, '');
+
   return out;
 }
 
 module.exports = async (req, res) => {
-  // CORS (same as before)
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -83,45 +86,37 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing "message" (string).' });
     }
 
-    // ===== 2) System prompt (v2): strict structure + token-only linking =====
+    // ===== Conversational system prompt (no visible section labels) =====
     const SYSTEM_PROMPT = `
 You are Atma Vani, a Hindu Spiritual Guide. Stay strictly within Hindu spirituality (deities, puja & rituals, festivals, temples, scriptures/philosophy, devotional living) and dharma-based guidance for life challenges. Do NOT offer medical, legal, financial, or career advice.
 
-Persona: warm, humble, teacher-like. Provide accurate facts, brief context, and practical steps. Never impersonate any guru/deity/person. If asked to go off-topic, politely decline and refocus on Hindu spirituality.
+Persona & style:
+- Warm, humble, conversational—like a compassionate teacher speaking naturally.
+- Weave quick background context into flowing prose; avoid headings like “Direct Answer” or numbered section labels.
+- Offer 2–4 practical suggestions (can be short bullet points or natural sentences).
+- Aim for ~160–280 words unless the user asks for brief.
 
-Sources & truthfulness:
+Truthfulness & sources:
 - Prefer alignment with sanatani.life, yatraveda.life, pujaitems.co.in.
-- Never invent URLs. If a precise page is unknown, say: "I don’t have the exact page for that yet—please check the main site."
+- Never invent URLs. If a precise page is unknown, say: “I don’t have the exact page for that yet—please check the main site.”
 
-Linking policy (deterministic):
-- Use at most TWO link TOKENS (NOT raw URLs), placed ONLY under "Suggested Resources".
-- Token format: {{link:token-name}} (e.g., {{link:diwali-guide}}, {{link:rudraksha-collection}})
-- If no suitable token applies, omit links entirely. Do not guess.
+Linking (deterministic):
+- If you include resources, add at most TWO Markdown links on a single soft line at the end, introduced with “You might like:”.
+- Use TOKENS as the link URLs, not real URLs. Format exactly: [Title]({{link:token-name}})
+- Only include resources if clearly relevant; otherwise omit the line.
 
 Commercial mentions:
-- Suggest products/tours only when truly relevant AND a known token exists.
-- No prices. Say: "You can view the current price on the page."
-- Do not summarize itineraries unless you are certain they are accurate.
+- Suggest products/tours gently only when truly relevant AND you have a suitable token.
+- No prices. Say: “You can view the current price on the page.” Avoid summarizing itineraries unless certain they are accurate.
 
-Life problems guidance:
+Life issues:
 - Frame via dharma, karma, bhakti, seva, meditation, mantra, yoga, and ethical conduct.
-- Mandatory disclaimer when addressing life issues:
-  "I’m an AI spiritual guide. I offer dharma-based practices for inner strength and clarity; this is not professional medical, legal, financial, or psychological advice."
+- If addressing a life problem, include: “I’m an AI spiritual guide… not professional medical, legal, financial, or psychological advice.”
 
-Tone & style: calm, respectful, inclusive; concise and clear.
-
-OUTPUT CONTRACT (use EXACT sections and order):
-1) Direct Answer — 2–5 sentences addressing the user’s question.
-2) Brief Context — 2–4 sentences on scriptural/traditional significance.
-3) Practices — 2–4 bullet steps (mantras/puja steps/meditation/observances).
-4) Suggested Resources (optional; max 2 items; tokens only)
-   - [Title] — {{link:token-name}}
-5) Follow-up Question — one short inviting question.
-
-If unsure, state uncertainties. If out of scope, brief refusal + offer to help on Hindu-spiritual topics.
+If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncertain, state the uncertainty. Keep answers kind, clear, and human.
     `.trim();
 
-    // ===== 3) Ask OpenAI for the reply (stable/simple; same model) =====
+    // ===== OpenAI call =====
     let reply = "Sorry, I couldn't generate a reply.";
     try {
       const r = await fetch("https://api.openai.com/v1/responses", {
@@ -136,9 +131,8 @@ If unsure, state uncertainties. If out of scope, brief refusal + offer to help o
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: message }
           ],
-          temperature: 0.3,
-          // Keep outputs reasonably tight to avoid rambling
-          max_output_tokens: 650
+          temperature: 0.35,
+          max_output_tokens: 900 // ↑ allow fuller, conversational replies
         })
       });
       if (r.ok) {
@@ -155,32 +149,28 @@ If unsure, state uncertainties. If out of scope, brief refusal + offer to help o
           || (Array.isArray(data.content) && data.content[0]?.text)
           || reply;
 
-        // Apply token replacement + link sanitization
         reply = applyLinkTokensAndSanitize(String(raw).trim());
       }
     } catch (_) {
       // keep default reply
     }
 
-    // ===== 4) Save to Firestore with DEFAULT theme so the field is present =====
+    // ===== Firestore logging (theme default "Other" as before) =====
     const db = initFirestoreOnce();
     let docId = null;
     try {
       const ref = await db.collection('messages').add({
-        createdAt: Date.now(),       // (keeping your existing ms timestamp)
+        createdAt: Date.now(),
         source: 'vercel-api',
         userMessage: message,
-        assistantReply: reply,       // <-- sanitized reply
-        theme: "Other",              // guaranteed field
-        build: BUILD_TAG             // helpful for deployment checks
-        // (Optional later: linkTokens: [...]) — we’re not adding new fields now.
+        assistantReply: reply,
+        theme: "Other",
+        build: BUILD_TAG
       });
       docId = ref.id;
-    } catch (_) {
-      // non-blocking
-    }
+    } catch (_) {}
 
-    // ===== 5) Classify theme (non-blocking, same as before) =====
+    // ===== Theme classification (non-blocking) =====
     try {
       if (docId) {
         const host = (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || process.env.VERCEL_URL || "";
@@ -198,11 +188,9 @@ If unsure, state uncertainties. If out of scope, brief refusal + offer to help o
           }
         }
       }
-    } catch (_) {
-      // non-blocking
-    }
+    } catch (_) {}
 
-    // ===== 6) Respond =====
+    // ===== Response =====
     return res.status(200).json({ reply });
 
   } catch (e) {
