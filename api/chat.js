@@ -1,26 +1,16 @@
-// Chat endpoint (conversational style + deterministic links via tokens + follow-ups)
+// Chat endpoint (conversational depth + strong follow-ups; links optional)
 
 const admin = require('firebase-admin');
 const BUILD_TAG = 'chat-v3-theme-default'; // shows up in Firestore & response
 
-// ===== LINK TOKENS → REAL URL MAP (EDIT THESE WHEN READY) =====
+// ===== LINK TOKENS → REAL URL MAP (leave empty for now) =====
+// When you’re ready, add tokens here. If empty, the model will omit the
+// "You might like:" line (per prompt + sanitizer below).
 const LINK_MAP = {
-  // --- PujaItems (examples — replace with real pages) ---
-  // "rudraksha-collection": "https://pujaitems.co.in/collections/rudraksha-malas",
-  // "lakshmi-puja-kit": "https://pujaitems.co.in/products/lakshmi-puja-samagri-kit",
-  // "shiv-parvati-idols": "https://pujaitems.co.in/collections/shiv-parvati-idols",
-
-  // --- Sanatani.life (examples) ---
-  // "diwali-guide": "https://www.sanatani.life/festivals/diwali",
-  // "lakshmi-puja-friday": "https://www.sanatani.life/puja-and-rituals/lakshmi-puja-on-friday",
-
-  // --- YatraVeda (examples) ---
-  // "char-dham-package": "https://www.yatraveda.life/tours/char-dham-yatra",
-  // "mathura-vrindavan-tour": "https://www.yatraveda.life/tours/mathura-vrindavan",
-  // "jagannath-temple": "https://www.yatraveda.life/temples/jagannath-puri",
+  // e.g. "rudraksha-collection": "https://pujaitems.co.in/collections/rudraksha-malas",
 };
 
-// Only these hosts are allowed in raw Markdown links (belt & suspenders)
+// Allowed hosts (belt & suspenders if any raw links appear)
 const ALLOWED_HOSTS = new Set([
   'pujaitems.co.in',
   'www.sanatani.life', 'sanatani.life',
@@ -40,7 +30,7 @@ function initFirestoreOnce() {
   return admin.firestore();
 }
 
-// ===== Replace {{link:token}}; keep only whitelisted domains; tidy blanks =====
+// Replace {{link:token}}; keep only whitelisted domains; tidy blanks
 function applyLinkTokensAndSanitize(markdown) {
   let out = String(markdown || '');
 
@@ -64,10 +54,10 @@ function applyLinkTokensAndSanitize(markdown) {
   // C) If a link ended up with empty URL "[]()", replace with just the text.
   out = out.replace(/\[([^\]]+)\]\(\s*\)/g, '$1');
 
-  // D) Remove dangling “—” at end of line (caused by dropped tokens)
+  // D) Remove dangling “—” at line end (caused by dropped tokens)
   out = out.replace(/—\s*$/gm, '');
 
-  // E) If a "You might like:" line has no square-bracket link, remove that whole line.
+  // E) If a "You might like:" line has no [text](url), drop that line
   out = out.split('\n').filter(line => {
     if (/^\s*You might like:/i.test(line) && !/\[.+?\]\(/.test(line)) return false;
     return true;
@@ -90,36 +80,32 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing "message" (string).' });
     }
 
-    // ===== Conversational system prompt (now mandates 2 follow-ups) =====
+    // ===== Conversation-first system prompt (deeper guidance + 2 goal-oriented follow-ups) =====
     const SYSTEM_PROMPT = `
 You are Atma Vani, a Hindu Spiritual Guide. Stay strictly within Hindu spirituality (deities, puja & rituals, festivals, temples, scriptures/philosophy, devotional living) and dharma-based guidance for life challenges. Do NOT offer medical, legal, financial, or career advice.
 
-Persona & style:
-- Warm, humble, conversational—like a compassionate teacher speaking naturally.
-- Weave brief background context into flowing prose; avoid headings like “Direct Answer” or numbered labels.
-- Offer 2–4 practical suggestions (short bullets or natural sentences).
-- Aim for ~180–300 words unless the user asks for brief.
+Style & depth:
+- Speak as a warm, compassionate teacher in natural conversation.
+- Aim for about 220–320 words unless the user asks for brief.
+- Give helpful nuance: when users ask “which/what/should I choose?”, compare common options (e.g., symbolism vs. practicality, sacred ideals vs. daily wear) and offer a tiny checklist (authenticity, sizing, usage).
+- Offer 2–4 practical suggestions woven into the prose or as short bullets.
 
 Truthfulness & sources:
 - Prefer alignment with sanatani.life, yatraveda.life, pujaitems.co.in.
-- Never invent URLs. If a precise page is unknown, say: “I don’t have the exact page for that yet—please check the main site.”
+- Never invent URLs. If an exact page is unknown, say: “I don’t have the exact page for that yet—please check the main site.”
 
-Linking (deterministic):
-- If you include resources, add at most TWO Markdown links on a single soft line at the end, introduced with “You might like:”.
-- Use TOKENS as the link URLs, not real URLs. Format exactly: [Title]({{link:token-name}})
-- Only include resources if clearly relevant; otherwise omit the line.
-
-Commercial mentions:
-- Suggest products/tours gently only when truly relevant AND you have a suitable token.
-- No prices. Say: “You can view the current price on the page.” Avoid summarizing itineraries unless certain they are accurate.
+Links (optional, only if certain):
+- Include at most ONE soft line at the very end starting with “You might like:” followed by up to TWO Markdown links.
+- Use TOKENS as link URLs (e.g., [Rudraksha Collection]({{link:rudraksha-collection}})). If no suitable token exists, OMIT the line entirely.
+- Do not show raw URLs or domains in the body.
 
 Life issues:
 - Frame via dharma, karma, bhakti, seva, meditation, mantra, yoga, and ethical conduct.
-- If addressing a life problem, include: “I’m an AI spiritual guide… not professional medical, legal, financial, or psychological advice.”
+- If addressing a life problem, include this line: “I’m an AI spiritual guide… not professional medical, legal, financial, or psychological advice.”
 
 Conversation design (MANDATORY):
-- ALWAYS end with exactly **two** open-ended follow-up questions (bulleted), each inviting the user to continue the conversation.
-- Avoid yes/no questions; start with verbs (e.g., “Would you like to explore…”, “Shall we plan…”, “Which of these resonates…”).
+- Always end with exactly two open-ended, goal-oriented follow-up questions (bulleted), tailored to the user’s aim (e.g., wear vs japa; budget/rarity comfort; preferred deity practice; travel intent).
+- Avoid yes/no prompts; start with verbs (“Would you like to explore…”, “Which option fits your practice…”, “Shall we plan…”).
 
 If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncertain, state the uncertainty. Keep answers kind, clear, and human.
     `.trim();
@@ -140,7 +126,7 @@ If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncer
             { role: "user", content: message }
           ],
           temperature: 0.35,
-          max_output_tokens: 950 // allows fuller conversational replies
+          max_output_tokens: 1000 // allow fuller, natural replies
         })
       });
       if (r.ok) {
@@ -163,7 +149,7 @@ If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncer
       // keep default reply
     }
 
-    // ===== Firestore logging (theme default "Other" as before) =====
+    // ===== Firestore logging (theme default "Other") =====
     const db = initFirestoreOnce();
     let docId = null;
     try {
