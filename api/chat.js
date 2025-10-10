@@ -1,8 +1,8 @@
-// Simple chat endpoint (no streaming yet). Uses OpenAI Responses API.
+// Simple chat endpoint (no streaming). Tries multiple fields for text.
 // POST JSON: { "message": "your question" }
 
 module.exports = async (req, res) => {
-  // CORS (okay to keep simple for now)
+  // CORS (okay for quick start)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -10,9 +10,10 @@ module.exports = async (req, res) => {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Use POST /api/chat' });
-    }
+  }
 
   try {
+    // Vercel parses JSON automatically for Node functions
     const { message } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Missing "message" (string).' });
@@ -36,7 +37,7 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
       temperature: 0.3
     };
 
-    const r = await fetch("https://api.openai.com/v1/responses", {
+    const resp = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -45,13 +46,34 @@ Structure: 1) clear answer; 2) brief context; 3) 2–4 practices; 4) optional pr
       body: JSON.stringify(payload)
     });
 
-    if (!r.ok) {
-      const errText = await r.text();
+    if (!resp.ok) {
+      const errText = await resp.text();
       return res.status(500).json({ error: "OpenAI error", detail: errText });
     }
 
-    const data = await r.json();
-    const reply = data.output_text || "Sorry, I couldn't generate a reply.";
+    const data = await resp.json();
+
+    // Try multiple shapes:
+    let reply =
+      data.output_text
+      || (Array.isArray(data.output)
+            ? data.output
+                .map(m => Array.isArray(m.content)
+                  ? m.content.map(c => c.text || "").join(" ")
+                  : "")
+                .join("\n").trim()
+            : "")
+      || (Array.isArray(data.content) && data.content[0]?.text)
+      || "";
+
+    if (!reply) {
+      // Return debug so we can see the shape just once
+      return res.status(200).json({
+        reply: "Debug: No output_text found. Here is the raw payload.",
+        raw: data
+      });
+    }
+
     return res.status(200).json({ reply });
   } catch (e) {
     return res.status(500).json({ error: 'Server error', detail: String(e) });
