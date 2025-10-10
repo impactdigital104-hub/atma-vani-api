@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Atma Vani — Voice MVP (Step 1: Mic Recorder Demo)</title>
+  <title>Atma Vani — Voice MVP (Step 2: STT wired)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
@@ -16,101 +16,36 @@
       --warn: #ffb020;
       --border: #23273a;
     }
-    html, body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-    .wrap {
-      max-width: 800px;
-      margin: 40px auto;
-      padding: 0 16px;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 20px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-    }
+    html, body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
+    .wrap { max-width: 900px; margin: 40px auto; padding: 0 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
     h1 { font-size: 24px; margin: 0 0 6px; }
     p.sub { margin: 0 0 20px; color: var(--muted); }
     .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    button {
-      appearance: none;
-      border: 1px solid var(--border);
-      background: #1b2030;
-      color: var(--text);
-      padding: 12px 16px;
-      border-radius: 12px;
-      cursor: pointer;
-      font-size: 15px;
-      transition: transform 0.05s ease, box-shadow 0.2s ease, background 0.2s ease;
-    }
+    button { appearance: none; border: 1px solid var(--border); background: #1b2030; color: var(--text); padding: 12px 16px; border-radius: 12px; cursor: pointer; font-size: 15px; transition: 0.15s ease; }
     button:hover { background: #1e2538; }
-    button:active { transform: translateY(1px); }
     button.primary { background: var(--accent); color: #0b1220; border-color: transparent; }
-    button.primary:hover { filter: brightness(1.05); }
     button.danger { background: var(--bad); color: #0b1220; border-color: transparent; }
-    .status {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border);
-      background: #121623;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--muted);
-      box-shadow: 0 0 0 0 rgba(255,0,0,0);
-    }
-    .dot.live {
-      background: var(--bad);
-      box-shadow: 0 0 0 6px rgba(255, 0, 0, 0.15);
-      animation: pulse 1.2s infinite ease-in-out;
-    }
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.2); }
-      70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
-    }
-    .kv {
-      display: grid;
-      grid-template-columns: 160px 1fr;
-      gap: 10px 16px;
-      margin: 16px 0;
-      font-size: 14px;
-    }
-    .kv div { color: var(--muted); }
-    .kv div.value { color: var(--text); }
-    .panel {
-      border-top: 1px dashed var(--border);
-      margin-top: 16px; padding-top: 16px;
-    }
-    .note {
-      background: #101521; border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 12px; padding: 12px 14px; font-size: 14px;
-    }
+    .status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); background: #121623; color: var(--muted); font-size: 14px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 0 rgba(255,0,0,0); }
+    .dot.live { background: var(--bad); box-shadow: 0 0 0 6px rgba(255, 0, 0, 0.15); animation: pulse 1.2s infinite ease-in-out; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.2);} 70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);} 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);} }
+    .kv { display: grid; grid-template-columns: 160px 1fr; gap: 10px 16px; margin: 16px 0; font-size: 14px; }
+    .kv div { color: var(--muted); } .kv div.value { color: var(--text); }
+    .panel { border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 16px; }
+    .note { background: #101521; border: 1px solid var(--border); color: var(--muted); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
     audio { width: 100%; margin-top: 10px; }
-    a.download {
-      color: var(--accent); text-decoration: none;
-      border: 1px solid var(--border);
-      padding: 8px 12px; border-radius: 10px; display: inline-block;
-    }
-    .warn { color: var(--warn); }
-    .ok { color: var(--good); }
-    .hidden { display: none !important; }
+    a.download { color: var(--accent); text-decoration: none; border: 1px solid var(--border); padding: 8px 12px; border-radius: 10px; display: inline-block; }
+    .warn { color: var(--warn); } .ok { color: var(--good); } .hidden { display: none !important; }
     code { background: #0f1421; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
       <h1>Atma Vani — Voice MVP</h1>
-      <p class="sub">Step 1: Microphone recorder demo (no server calls yet). Records to <code>webm/opus</code>, shows timer & size, and keeps the Blob locally.</p>
+      <p class="sub">Step 2: Transcribe the recorded audio via <code>/api/stt</code> (OpenAI STT). Then we’ll wire Chat in Step 3.</p>
 
       <div id="supportMsg" class="note hidden"></div>
 
@@ -119,6 +54,7 @@
         <button id="btnRecord" class="primary">🎙️ Start Recording</button>
         <button id="btnStop" class="danger" disabled>⏹️ Stop</button>
         <button id="btnReset" disabled>🔁 Reset</button>
+        <button id="btnTranscribe" disabled>📝 Transcribe</button>
       </div>
 
       <div class="kv">
@@ -139,21 +75,27 @@
       </div>
 
       <div class="panel">
+        <strong>Transcription</strong>
+        <p id="txStatus" class="sub">Status: <em>waiting for a recording…</em></p>
+        <div id="transcript" class="mono"></div>
+      </div>
+
+      <div class="panel">
         <strong>What’s next?</strong>
-        <p class="sub">After you confirm this works, we’ll wire it to <code>/api/stt</code> for transcription (Step 2), then to <code>/api/chat</code> and <code>/api/tts</code>.</p>
+        <p class="sub">After you confirm you can see your transcript here, we’ll wire this to <code>/api/chat</code> (Step 3) and then add TTS (Step 4).</p>
       </div>
     </div>
   </div>
 
   <script>
-    // Baby-simple recorder with clear states and guardrails.
-
+    // UI refs
     const ui = {
       supportMsg: document.getElementById('supportMsg'),
       httpsNote: document.getElementById('httpsNote'),
       btnRecord: document.getElementById('btnRecord'),
       btnStop: document.getElementById('btnStop'),
       btnReset: document.getElementById('btnReset'),
+      btnTranscribe: document.getElementById('btnTranscribe'),
       micStatus: document.getElementById('micStatus'),
       fmt: document.getElementById('fmt'),
       timer: document.getElementById('timer'),
@@ -163,43 +105,34 @@
       downloadWrap: document.getElementById('downloadWrap'),
       downloadLink: document.getElementById('downloadLink'),
       dot: document.getElementById('dot'),
-      stateLabel: document.getElementById('stateLabel')
+      stateLabel: document.getElementById('stateLabel'),
+      txStatus: document.getElementById('txStatus'),
+      transcript: document.getElementById('transcript'),
     };
 
-    // Basic environment notices (HTTPS & feature detection)
+    // Notes about HTTPS & feature support
     (function showContextNotes() {
       if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
         ui.httpsNote.classList.remove('hidden');
-        ui.httpsNote.innerHTML = '⚠️ <span class="warn">Tip:</span> Microphone access typically requires HTTPS. If this page is served over HTTP, the browser may block the mic.';
+        ui.httpsNote.innerHTML = '⚠️ Microphone access typically requires HTTPS. Use HTTPS or localhost.';
       } else {
         ui.httpsNote.classList.add('hidden');
       }
-
       const supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && 'MediaRecorder' in window;
       if (!supported) {
         ui.supportMsg.classList.remove('hidden');
-        ui.supportMsg.innerHTML = '❌ Your browser does not support <code>MediaRecorder</code> or <code>getUserMedia</code>. Try latest Chrome desktop. For MVP we target Chrome desktop support.';
+        ui.supportMsg.innerHTML = '❌ Your browser does not support <code>MediaRecorder</code> or <code>getUserMedia</code>. Use latest Chrome desktop.';
         ui.btnRecord.disabled = true;
       } else {
         ui.supportMsg.classList.add('hidden');
       }
     })();
 
-    // Choose the best available audio type for MediaRecorder
     function chooseAudioType() {
-      const candidates = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/ogg;codecs=opus',
-        'audio/ogg'
-      ];
-      for (const type of candidates) {
-        if (MediaRecorder.isTypeSupported(type)) return type;
-      }
-      return ''; // Let the browser choose default
+      const candidates = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
+      for (const type of candidates) if (MediaRecorder.isTypeSupported(type)) return type;
+      return '';
     }
-
-    // Pretty bytes
     function prettyBytes(bytes) {
       if (bytes === 0) return '0 KB';
       const units = ['B','KB','MB','GB'];
@@ -207,7 +140,6 @@
       return (bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + units[i];
     }
 
-    // Timer logic
     let t0 = 0, rafId = null;
     function startTimer() {
       t0 = performance.now();
@@ -222,17 +154,9 @@
       }
       tick();
     }
-    function stopTimer() {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = null;
-    }
+    function stopTimer() { if (rafId) cancelAnimationFrame(rafId); rafId = null; }
 
-    // Recorder state
-    let stream = null;
-    let recorder = null;
-    let chunks = [];
-    let bytesAccum = 0;
-    let recordedBlob = null;
+    let stream = null, recorder = null, chunks = [], bytesAccum = 0, recordedBlob = null;
     let mimeTypeChosen = chooseAudioType();
     ui.fmt.textContent = mimeTypeChosen || 'Browser default';
 
@@ -240,6 +164,7 @@
       ui.btnRecord.disabled = isRecording;
       ui.btnStop.disabled = !isRecording;
       ui.btnReset.disabled = isRecording || (!recordedBlob && chunks.length === 0);
+      ui.btnTranscribe.disabled = !recordedBlob || isRecording;
       ui.stateLabel.textContent = isRecording ? 'Recording…' : (recordedBlob ? 'Recorded' : 'Idle');
       ui.dot.classList.toggle('live', isRecording);
     }
@@ -258,25 +183,14 @@
     }
 
     function resetAll() {
-      // Stop recorder & tracks if needed
-      if (recorder && recorder.state !== 'inactive') {
-        try { recorder.stop(); } catch {}
-      }
-      if (stream) {
-        for (const track of stream.getTracks()) track.stop();
-        stream = null;
-      }
-      recorder = null;
-      chunks = [];
-      bytesAccum = 0;
-      recordedBlob = null;
-      ui.player.src = '';
-      ui.player.classList.add('hidden');
+      if (recorder && recorder.state !== 'inactive') { try { recorder.stop(); } catch {} }
+      if (stream) { for (const track of stream.getTracks()) track.stop(); stream = null; }
+      recorder = null; chunks = []; bytesAccum = 0; recordedBlob = null;
+      ui.player.src = ''; ui.player.classList.add('hidden');
       ui.downloadWrap.classList.add('hidden');
-      ui.size.textContent = '0 KB';
-      ui.chunks.textContent = '0';
-      ui.timer.textContent = '00:00.0';
-      ui.micStatus.textContent = 'Not requested';
+      ui.size.textContent = '0 KB'; ui.chunks.textContent = '0';
+      ui.timer.textContent = '00:00.0'; ui.micStatus.textContent = 'Not requested';
+      ui.transcript.textContent = ''; ui.txStatus.textContent = 'Status: waiting for a recording…';
       setState(false);
     }
 
@@ -285,66 +199,72 @@
     ui.btnRecord.addEventListener('click', async () => {
       try {
         await ensureMicStream();
-
-        chunks = [];
-        bytesAccum = 0;
-        recordedBlob = null;
+        chunks = []; bytesAccum = 0; recordedBlob = null;
         setState(true);
         ui.player.classList.add('hidden');
         ui.downloadWrap.classList.add('hidden');
+        ui.transcript.textContent = '';
+        ui.txStatus.textContent = 'Status: recording…';
 
         recorder = new MediaRecorder(stream, mimeTypeChosen ? { mimeType: mimeTypeChosen } : undefined);
-
         recorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) {
-            chunks.push(e.data);
-            bytesAccum += e.data.size;
+            chunks.push(e.data); bytesAccum += e.data.size;
             ui.size.textContent = prettyBytes(bytesAccum);
             ui.chunks.textContent = String(chunks.length);
           }
         };
-
-        recorder.onstart = () => {
-          startTimer();
-        };
-
+        recorder.onstart = () => { startTimer(); };
         recorder.onstop = () => {
           stopTimer();
-          // Build final Blob
           const type = mimeTypeChosen || recorder.mimeType || 'audio/webm';
           recordedBlob = new Blob(chunks, { type });
-          // Expose for later steps (upload)
           window.lastRecordingBlob = recordedBlob;
-
-          // Preview + download
           const url = URL.createObjectURL(recordedBlob);
-          ui.player.src = url;
-          ui.player.classList.remove('hidden');
-          ui.downloadLink.href = url;
-          ui.downloadWrap.classList.remove('hidden');
-
+          ui.player.src = url; ui.player.classList.remove('hidden');
+          ui.downloadLink.href = url; ui.downloadWrap.classList.remove('hidden');
+          ui.txStatus.textContent = 'Status: ready to transcribe.';
           setState(false);
         };
-
-        // Timeslice: gather data every 250ms for live size updates
         recorder.start(250);
       } catch (err) {
         console.error('Record error:', err);
-        alert('Could not start recording. Check microphone permissions and try again.');
+        alert('Could not start recording. Check mic permissions and try again.');
         setState(false);
       }
     });
 
     ui.btnStop.addEventListener('click', () => {
-      if (recorder && recorder.state === 'recording') {
-        try { recorder.stop(); } catch (e) {}
-      }
-      // Stop tracks to release mic
-      if (stream) {
-        for (const track of stream.getTracks()) track.stop();
-        stream = null;
+      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch {} }
+      if (stream) { for (const track of stream.getTracks()) track.stop(); stream = null; }
+    });
+
+    // --- STT Call ---
+    ui.btnTranscribe.addEventListener('click', async () => {
+      if (!window.lastRecordingBlob) return alert('Please record something first.');
+      ui.txStatus.textContent = 'Status: uploading for transcription…';
+
+      try {
+        const fd = new FormData();
+        const file = new File([window.lastRecordingBlob], 'recording.webm', { type: window.lastRecordingBlob.type || 'audio/webm' });
+        fd.append('file', file);
+
+        const resp = await fetch('/api/stt', { method: 'POST', body: fd });
+        if (!resp.ok) {
+          const err = await safeJson(resp);
+          throw new Error(err?.error || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        ui.txStatus.textContent = `Status: transcribed in ${data?.sttMs ?? '–'} ms.`;
+        ui.transcript.textContent = data?.text || '(no text returned)';
+      } catch (e) {
+        console.error(e);
+        ui.txStatus.textContent = 'Status: transcription failed. Please retry.';
+        alert(`Transcription error: ${e.message}`);
       }
     });
+
+    async function safeJson(r) { try { return await r.json(); } catch { return null; } }
   </script>
 </body>
 </html>
