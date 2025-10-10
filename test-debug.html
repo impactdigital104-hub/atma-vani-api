@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Atma Vani – Test Debug</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:24px} textarea{width:100%;height:120px} pre{white-space:pre-wrap;background:#fffdfa;border:1px solid #f2e6d6;padding:12px;border-radius:8px}</style>
+</head>
+<body>
+<h1>Atma Vani – Test Debug</h1>
+<textarea id="q" placeholder="Type a question..."></textarea><br><br>
+<button id="go">Send</button><br><br>
+<pre id="out"></pre>
+<script>
+const API_URL = './api/chat';
+const out = document.getElementById('out');
+document.getElementById('go').onclick = async () => {
+  out.textContent = 'Sending...';
+  const message = document.getElementById('q').value.trim();
+  if (!message) { out.textContent = 'Type something first.'; return; }
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message })
+    });
+    const text = await res.text();
+    try { out.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+    catch { out.textContent = text; }
+  } catch (e) {
+    out.textContent = 'Network error: ' + e.message;
+  }
+};
+</script>
+</body>
+</html>
