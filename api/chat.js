@@ -69,18 +69,15 @@ User question: """${message}"""
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: [
-          { role: "system", content: system },
-          { role: "user", content: toolPrompt }
-        ],
-        temperature: 0.3,
-        max_output_tokens: 600,
-        // force valid JSON
-        response_format: { type: "json_object" }
-      })
-    });
-
+  model: "gpt-4o-mini",
+  input: [
+    { role: "system", content: system },
+    { role: "user", content: toolPrompt }
+  ],
+  temperature: 0.3,
+  max_output_tokens: 600,
+  text: { format: "json" }   // <-- correct way for Responses API
+})
     if (!r.ok) {
       const errText = await r.text();
       return res.status(500).json({ error: "OpenAI error", detail: errText });
