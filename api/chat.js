@@ -1,21 +1,7 @@
-// Chat endpoint (conversational depth + strong follow-ups; links optional)
+// Chat endpoint (conversational depth + 2 decision-oriented follow-ups; links disabled)
 
 const admin = require('firebase-admin');
 const BUILD_TAG = 'chat-v3-theme-default'; // shows up in Firestore & response
-
-// ===== LINK TOKENS → REAL URL MAP (leave empty for now) =====
-// When you’re ready, add tokens here. If empty, the model will omit the
-// "You might like:" line (per prompt + sanitizer below).
-const LINK_MAP = {
-  // e.g. "rudraksha-collection": "https://pujaitems.co.in/collections/rudraksha-malas",
-};
-
-// Allowed hosts (belt & suspenders if any raw links appear)
-const ALLOWED_HOSTS = new Set([
-  'pujaitems.co.in',
-  'www.sanatani.life', 'sanatani.life',
-  'www.yatraveda.life', 'yatraveda.life',
-]);
 
 function initFirestoreOnce() {
   if (admin.apps.length === 0) {
@@ -30,40 +16,35 @@ function initFirestoreOnce() {
   return admin.firestore();
 }
 
-// Replace {{link:token}}; keep only whitelisted domains; tidy blanks
-function applyLinkTokensAndSanitize(markdown) {
+/**
+ * Output hygiene while links are OFF:
+ * - Remove any {{link:token}} placeholders if the model ever emits them.
+ * - Convert Markdown links [text](url) to plain text (keep the anchor text, drop the URL).
+ * - Clean dangling punctuation created by link removal.
+ */
+function sanitizeLinksOff(markdown) {
   let out = String(markdown || '');
 
-  // A) Replace token placeholders with real URLs (or drop if unknown)
-  out = out.replace(/\{\{\s*link:([a-z0-9\-]+)\s*\}\}/gi, (_, token) => {
-    const url = LINK_MAP[token];
-    return url ? url : ''; // unknown token → remove quietly
-  });
+  // Remove any token placeholders like {{link:rudraksha-collection}}
+  out = out.replace(/\{\{\s*link:[^}]+\}\}/gi, '');
 
-  // B) Strip any raw Markdown links pointing to non-whitelisted domains.
-  out = out.replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/gi, (m, text, url) => {
-    try {
-      const u = new URL(url);
-      if (ALLOWED_HOSTS.has(u.host)) return m; // allowed
-      return text; // not allowed → keep anchor text only
-    } catch {
-      return text; // malformed URL → keep text
-    }
-  });
+  // Convert Markdown links to plain text: [Title](https://...) -> Title
+  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, '$1');
 
-  // C) If a link ended up with empty URL "[]()", replace with just the text.
-  out = out.replace(/\[([^\]]+)\]\(\s*\)/g, '$1');
+  // Remove accidental empty brackets or dangling dashes/emdashes at line ends
+  out = out.replace(/\[([^\]]*)\]\(\s*\)/g, '$1');
+  out = out.replace(/[—-]\s*$/gm, '');
 
-  // D) Remove dangling “—” at line end (caused by dropped tokens)
-  out = out.replace(/—\s*$/gm, '');
+  // If a "You might like:" line remains without any link text, remove the whole line
+  out = out
+    .split('\n')
+    .filter(line => {
+      if (/^\s*You might like:/i.test(line) && !/\[[^\]]+\]\(/.test(line)) return false;
+      return true;
+    })
+    .join('\n');
 
-  // E) If a "You might like:" line has no [text](url), drop that line
-  out = out.split('\n').filter(line => {
-    if (/^\s*You might like:/i.test(line) && !/\[.+?\]\(/.test(line)) return false;
-    return true;
-  }).join('\n');
-
-  return out;
+  return out.trim();
 }
 
 module.exports = async (req, res) => {
@@ -80,34 +61,36 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing "message" (string).' });
     }
 
-    // ===== Conversation-first system prompt (deeper guidance + 2 goal-oriented follow-ups) =====
+    // ===== APPROVED SYSTEM PROMPT =====
     const SYSTEM_PROMPT = `
 You are Atma Vani, a Hindu Spiritual Guide. Stay strictly within Hindu spirituality (deities, puja & rituals, festivals, temples, scriptures/philosophy, devotional living) and dharma-based guidance for life challenges. Do NOT offer medical, legal, financial, or career advice.
 
-Style & depth:
-- Speak as a warm, compassionate teacher in natural conversation.
-- Aim for about 220–320 words unless the user asks for brief.
-- Give helpful nuance: when users ask “which/what/should I choose?”, compare common options (e.g., symbolism vs. practicality, sacred ideals vs. daily wear) and offer a tiny checklist (authenticity, sizing, usage).
-- Offer 2–4 practical suggestions woven into the prose or as short bullets.
+Persona & style
+- Warm, humble, conversational—like a compassionate teacher.
+- Aim for ~220–320 words unless the user asks for brief.
+- Weave a little background context into flowing prose (no headings like “Direct Answer”).
+- Offer 2–4 practical suggestions (can be short bullets or naturally phrased steps).
 
-Truthfulness & sources:
-- Prefer alignment with sanatani.life, yatraveda.life, pujaitems.co.in.
-- Never invent URLs. If an exact page is unknown, say: “I don’t have the exact page for that yet—please check the main site.”
+Truthfulness & sources
+- Prefer alignment with knowledge consistent with: sanatani.life, yatraveda.life, pujaitems.co.in.
+- Never invent URLs. Unless the user explicitly asks for links, do not include any links.
+- If an exact page is unknown and the user asks for a link, say: “I don’t have the exact page yet—please check the main site.”
 
-Links (optional, only if certain):
-- Include at most ONE soft line at the very end starting with “You might like:” followed by up to TWO Markdown links.
-- Use TOKENS as link URLs (e.g., [Rudraksha Collection]({{link:rudraksha-collection}})). If no suitable token exists, OMIT the line entirely.
-- Do not show raw URLs or domains in the body.
+Choice questions (“which/what should I choose?”)
+- Briefly compare 1–2 close options (e.g., symbolism vs daily practicality).
+- Give a one-sentence “choice rule” (who should pick which).
+- Add a tiny checklist when helpful (e.g., authenticity, sizing, energizing/wearing guidance).
 
-Life issues:
-- Frame via dharma, karma, bhakti, seva, meditation, mantra, yoga, and ethical conduct.
-- If addressing a life problem, include this line: “I’m an AI spiritual guide… not professional medical, legal, financial, or psychological advice.”
+Life issues (anger, stress, relationships, money worries, etc.)
+- Frame guidance via dharma, karma, bhakti, seva, Bhagwad Gita, meditation, mantra, yoga, and ethical conduct.
+- Include this exact disclaimer when addressing life problems:
+  “I’m an AI spiritual guide. I offer dharma-based practices for inner strength and clarity; this is not professional medical, legal, financial, or psychological advice.”
 
-Conversation design (MANDATORY):
-- Always end with exactly two open-ended, goal-oriented follow-up questions (bulleted), tailored to the user’s aim (e.g., wear vs japa; budget/rarity comfort; preferred deity practice; travel intent).
-- Avoid yes/no prompts; start with verbs (“Would you like to explore…”, “Which option fits your practice…”, “Shall we plan…”).
+Conversation design (MANDATORY)
+- Always end with exactly two open-ended, decision-oriented follow-up questions (as bullets). Avoid yes/no. Examples: preference (pendant vs mala), purpose (japa vs daily wear), sensitivity/comfort (rarity/budget), routine length.
 
-If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncertain, state the uncertainty. Keep answers kind, clear, and human.
+Out-of-scope
+- Briefly decline and refocus on Hindu-spiritual topics. If uncertain, state uncertainty politely and keep guidance conservative and truthful.
     `.trim();
 
     // ===== OpenAI call =====
@@ -126,7 +109,7 @@ If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncer
             { role: "user", content: message }
           ],
           temperature: 0.35,
-          max_output_tokens: 1000 // allow fuller, natural replies
+          max_output_tokens: 1000 // enough for 220–320 words + bullets
         })
       });
       if (r.ok) {
@@ -143,7 +126,7 @@ If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncer
           || (Array.isArray(data.content) && data.content[0]?.text)
           || reply;
 
-        reply = applyLinkTokensAndSanitize(String(raw).trim());
+        reply = sanitizeLinksOff(String(raw).trim());
       }
     } catch (_) {
       // keep default reply
@@ -154,7 +137,7 @@ If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncer
     let docId = null;
     try {
       const ref = await db.collection('messages').add({
-        createdAt: Date.now(),
+        createdAt: Date.now(),      // ms timestamp (your existing convention)
         source: 'vercel-api',
         userMessage: message,
         assistantReply: reply,
@@ -173,24 +156,4 @@ If out of scope, briefly decline and refocus on Hindu-spiritual topics. If uncer
         const classifyRes = await fetch(`${origin}/api/classify-theme`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: message })
-        });
-        if (classifyRes.ok) {
-          const { theme } = await classifyRes.json();
-          if (theme && typeof theme === 'string') {
-            await db.collection('messages').doc(docId).update({ theme });
-          }
-        }
-      }
-    } catch (_) {}
-
-    // ===== Response =====
-    return res.status(200).json({ reply });
-
-  } catch (e) {
-    return res.status(200).json({
-      reply: "Sorry, something went wrong on the server.",
-      build: BUILD_TAG
-    });
-  }
-};
+          body:
