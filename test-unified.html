@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Atma Vani — Unified (Text + Voice) · Auto Language</title>
+  <title>Atma Vani — Unified (Text + Voice) · Auto Language + Clean Speech</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{--bg:#0e0f13;--card:#151824;--text:#e9eef7;--muted:#a9b3c7;--accent:#6ea8fe;--good:#27c093;--bad:#ff6b6b;--warn:#ffb020;--border:#23273a}
@@ -35,7 +35,7 @@
 <body>
   <div class="wrap">
     <h1>Atma Vani — Unified (Text + Voice)</h1>
-    <p class="sub">Auto-detects English vs Hindi. Speaks a concise summary (~45s) by default. If you ask to recite, it speaks the full text.</p>
+    <p class="sub">Auto-detects English/Hindi, speaks a concise summary (~45s) by default, and strips Markdown so the voice doesn’t read asterisks.</p>
 
     <!-- Engine chooser (affects TTS only) -->
     <div class="card" style="margin-bottom:12px">
@@ -52,7 +52,7 @@
           <input type="checkbox" id="speakConcise" checked />
           Speak concise summary (~45s) by default
         </label>
-        <span class="note">We’ll auto-pick a Hindi or English voice when speaking.</span>
+        <span class="note">We’ll auto-pick a Hindi/English voice when speaking.</span>
       </div>
     </div>
 
@@ -131,6 +131,23 @@
     function prettyBytes(b){ if(!b) return '0 KB'; const u=['B','KB','MB','GB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i] }
     function chooseAudioType(){ const c=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg']; for(const t of c) if(MediaRecorder.isTypeSupported(t)) return t; return '' }
 
+    // Strip Markdown so TTS doesn't read **, *, #, links, etc.
+    function stripMarkdownForSpeech(s = "") {
+      let t = String(s);
+      t = t.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');      // images -> alt
+      t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');       // links -> text
+      t = t.replace(/`{3}[\s\S]*?`{3}/g, '');              // code fences
+      t = t.replace(/`([^`]+)`/g, '$1');                  // inline code
+      t = t.replace(/(\*\*|__)(.*?)\1/g, '$2');           // **bold** __bold__
+      t = t.replace(/(\*|_)(.*?)\1/g, '$2');              // *em* _em_
+      t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '');           // headings
+      t = t.replace(/^\s{0,3}>\s?/gm, '');                // blockquotes
+      t = t.replace(/^\s*[-*+]\s+/gm, '');                // bullets
+      t = t.replace(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/gm, '');// hr
+      t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n'); // whitespace
+      return t.trim();
+    }
+
     // Detect Hindi (Devanagari) vs English
     function detectLang(text=''){
       const t = String(text || '');
@@ -140,12 +157,11 @@
 
     // Pick a voice based on engine + language
     function chooseVoice(engine, lang){
-      // Defaults you can tune later
       const map = {
         google: { 'en-IN':'en-IN-Neural2-A', 'hi-IN':'hi-IN-Neural2-A' },
-        openai: { 'en-IN':'alloy',          'hi-IN':'alloy' }, // OpenAI has fewer explicit locale voices, but it'll speak Hindi text
+        openai: { 'en-IN':'alloy',           'hi-IN':'alloy' }, // OpenAI will still speak Hindi text decently
         azure:  { 'en-IN':'en-IN-NeerjaNeural', 'hi-IN':'hi-IN-SwaraNeural' },
-        sarvam: { 'en-IN':'Abhilash',       'hi-IN':'Abhilash' }, // example voice names; adjust if you have favorites
+        sarvam: { 'en-IN':'Abhilash',        'hi-IN':'Abhilash' }, // adjust to your fav Sarvam voices
         elevenlabs: { 'en-IN':'21m00Tcm4TlvDq8ikWAM', 'hi-IN':'21m00Tcm4TlvDq8ikWAM' } // demo voice id
       };
       const byEngine = map[engine] || map.google;
@@ -164,13 +180,12 @@
     }
     function isAlreadyShort(text=''){ return (text.trim().length <= 600); }
 
-    // Build concise summary via /api/chat
+    // Build concise summary via /api/chat (asks for PLAIN TEXT)
     async function buildConciseSummary(userMsg, fullReply){
       const ask = [
         "You are preparing a SPOKEN summary for the user.",
         "Create a concise, conversational summary (~110-130 words, ~45 seconds).",
-        "Prefer short sentences and simple wording.",
-        "No prefaces like 'Here’s a summary:' — return only the summary text.",
+        "Return PLAIN TEXT only (no Markdown, no bullets, no asterisks).",
         "If the user explicitly asked to recite a mantra, stotram, bhajan, aarti, puja, or similar ritual text, DO NOT SUMMARIZE: return the full text for recitation."
       ].join(' ');
       const payload = `${ask}\n\nUser message:\n${userMsg}\n\nAssistant reply:\n${fullReply}`;
@@ -178,4 +193,290 @@
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ message: payload })
       });
-      if (!r.ok) { const e
+      if (!r.ok) { const e = await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
+      const data = await r.json();
+      return data?.reply || '';
+    }
+
+    // ===== Engine selector =====
+    const engineSelect = $('#engine'); // openai | google | azure | sarvam | elevenlabs
+    function currentEngine(){ return engineSelect.value || 'openai'; }
+
+    // ===== TEXT CHAT =====
+    const txt = {
+      input: $('#txtInput'),
+      send: $('#btnSendText'),
+      status: $('#textStatus'),
+      reply: $('#textReply'),
+      autoSpeak: $('#autoSpeakText'),
+      speakFullBtn: $('#btnSpeakFullText')
+    };
+    const speakConciseToggle = $('#speakConcise');
+
+    let lastTextUser = '';
+    txt.send.addEventListener('click', async ()=>{
+      const messageRaw = (txt.input.value || '').trim();
+      if (!messageRaw) { txt.input.focus(); return; }
+      lastTextUser = messageRaw;
+
+      // language detection + hint so reply matches user language
+      const lang = detectLang(messageRaw);
+      const langHint = (lang === 'hi-IN')
+        ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
+        : " Please reply in English. Please return PLAIN TEXT (no Markdown).";
+      const message = messageRaw + langHint;
+
+      txt.status.textContent = 'Status: thinking…';
+      txt.reply.textContent = '';
+      txt.speakFullBtn.disabled = true;
+      try {
+        const r = await fetch('/api/chat',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ message })
+        });
+        if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
+        const data = await r.json();
+        const reply = data?.reply || '';
+        txt.reply.textContent = reply;
+        txt.status.textContent = 'Status: reply received.';
+        txt.speakFullBtn.disabled = !reply;
+
+        if (txt.autoSpeak.checked && reply) {
+          const speechText = await decideSpeechText(messageRaw, reply, speakConciseToggle.checked);
+          const engine = currentEngine();
+          const voice = chooseVoice(engine, lang);
+          await speak(speechText, engine, voice);
+        }
+      } catch (e) {
+        console.error(e);
+        txt.status.textContent = 'Status: failed. Please retry.';
+        alert(`Chat error: ${e.message}`);
+      }
+    });
+
+    txt.speakFullBtn.addEventListener('click', async ()=>{
+      const reply = txt.reply.textContent.trim();
+      if (!reply) return;
+      const lang = detectLang(reply);
+      const engine = currentEngine();
+      const voice = chooseVoice(engine, lang);
+      await speak(reply, engine, voice);
+    });
+
+    // ===== VOICE CHAT =====
+    const vc = {
+      httpsNote: $('#httpsNote'),
+      btnRecord: $('#btnRecord'), btnStop: $('#btnStop'), btnReset: $('#btnReset'), btnTranscribe: $('#btnTranscribe'),
+      autoSTT: $('#autoSTT'), autoChat: $('#autoChat'), autoSpeak: $('#autoSpeakVoice'),
+      micStatus: $('#micStatus'), fmt: $('#fmt'), timer: $('#timer'), size: $('#size'), chunks: $('#chunks'),
+      player: $('#player'), downloadWrap: $('#downloadWrap'), downloadLink: $('#downloadLink'),
+      dot: $('#dot'), stateLabel: $('#stateLabel'),
+      txStatus: $('#txStatus'), transcript: $('#transcript'),
+      chatStatus: $('#chatStatus'), reply: $('#voiceReply'),
+      speakFullBtn: $('#btnSpeakFullVoice')
+    };
+
+    if (location.protocol!=='https:' && location.hostname!=='localhost') {
+      vc.httpsNote.classList.remove('hidden');
+      vc.httpsNote.textContent = '⚠️ Microphone access typically requires HTTPS. Use HTTPS or localhost.';
+    }
+
+    const supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && 'MediaRecorder' in window;
+    if (!supported) { vc.btnRecord.disabled = true; }
+
+    let stream=null, recorder=null, chunks=[], bytes=0, recordedBlob=null, raf=null, t0=0;
+    function startTimer(){ t0=performance.now(); (function tick(){ const ms=performance.now()-t0, s=Math.floor(ms/1000), d=Math.floor((ms%1000)/100); vc.timer.textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}.${d}`; raf=requestAnimationFrame(tick) })() }
+    function stopTimer(){ if(raf) cancelAnimationFrame(raf); raf=null }
+    const mime = chooseAudioType(); vc.fmt.textContent = mime || 'Browser default';
+
+    function setState(rec){
+      vc.btnRecord.disabled=rec; vc.btnStop.disabled=!rec;
+      vc.btnReset.disabled=rec || (!recordedBlob && chunks.length===0);
+      vc.btnTranscribe.disabled=!recordedBlob || rec;
+      vc.stateLabel.textContent=rec?'Recording…':(recordedBlob?'Recorded':'Idle');
+      vc.dot.classList.toggle('live',rec);
+    }
+
+    async function ensureMic(){
+      if (stream) return stream;
+      vc.micStatus.textContent = 'Requesting permission…';
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      vc.micStatus.innerHTML = 'Granted';
+      return stream;
+    }
+
+    function resetAll(){
+      if(recorder && recorder.state!=='inactive'){ try{ recorder.stop() }catch{} }
+      if(stream){ for(const t of stream.getTracks()) t.stop(); stream=null; }
+      recorder=null; chunks=[]; bytes=0; recordedBlob=null;
+      vc.player.src=''; vc.player.classList.add('hidden'); vc.downloadWrap.classList.add('hidden');
+      vc.size.textContent='0 KB'; vc.chunks.textContent='0'; vc.timer.textContent='00:00.0'; vc.micStatus.textContent='Not requested';
+      vc.transcript.textContent=''; vc.txStatus.textContent='Status: waiting for a recording…';
+      vc.reply.textContent=''; vc.chatStatus.textContent='Status: waiting for a transcript…';
+      vc.speakFullBtn.disabled = true;
+      setState(false);
+    }
+    $('#btnReset').addEventListener('click', resetAll);
+
+    $('#btnRecord').addEventListener('click', async ()=>{
+      try{
+        await ensureMic();
+        chunks=[]; bytes=0; recordedBlob=null; setState(true);
+        vc.player.classList.add('hidden'); vc.downloadWrap.classList.add('hidden');
+        vc.transcript.textContent=''; vc.txStatus.textContent='Status: recording…';
+        vc.reply.textContent=''; vc.chatStatus.textContent='Status: waiting for a transcript…';
+        vc.speakFullBtn.disabled = true;
+
+        recorder = new MediaRecorder(stream, mime?{ mimeType:mime }:undefined);
+        recorder.ondataavailable = e => { if(e.data && e.data.size>0){ chunks.push(e.data); bytes+=e.data.size; vc.size.textContent=prettyBytes(bytes); vc.chunks.textContent=String(chunks.length); } };
+        recorder.onstart = () => startTimer();
+        recorder.onstop = async ()=>{
+          stopTimer();
+          const type = mime || recorder.mimeType || 'audio/webm';
+          recordedBlob = new Blob(chunks, { type }); window.lastRecordingBlob = recordedBlob;
+          const url = URL.createObjectURL(recordedBlob); vc.player.src=url; vc.player.classList.remove('hidden'); vc.downloadLink.href=url; vc.downloadWrap.classList.remove('hidden');
+          vc.txStatus.textContent='Status: ready to transcribe.'; setState(false);
+          if (vc.autoSTT.checked) await transcribe();
+        };
+        recorder.start(250);
+      }catch(e){ console.error(e); alert('Could not start recording. Check mic permission.'); setState(false); }
+    });
+
+    $('#btnStop').addEventListener('click', ()=>{
+      if(recorder && recorder.state==='recording'){ try{ recorder.stop() }catch{} }
+      if(stream){ for(const t of stream.getTracks()) t.stop(); stream=null; }
+    });
+
+    $('#btnTranscribe').addEventListener('click', transcribe);
+    async function transcribe(){
+      if(!window.lastRecordingBlob){ alert('Please record something first.'); return; }
+      vc.txStatus.textContent='Status: uploading for transcription…';
+      try{
+        const fd=new FormData();
+        const file=new File([window.lastRecordingBlob],'recording.webm',{type:window.lastRecordingBlob.type||'audio/webm'});
+        fd.append('file',file);
+        const resp=await fetch('/api/stt',{method:'POST',body:fd});
+        if(!resp.ok){ const err=await safeJson(resp); throw new Error(err?.error||`HTTP ${resp.status}`); }
+        const data=await resp.json(); const text=data?.text||'';
+        vc.txStatus.textContent=`Status: transcribed in ${data?.sttMs ?? '–'} ms.`; vc.transcript.textContent=text; setState(false);
+        if (vc.autoChat.checked && text) await sendVoiceToChat(text);
+      }catch(e){ console.error(e); vc.txStatus.textContent='Status: transcription failed. Please retry.'; alert(`Transcription error: ${e.message}`); }
+    }
+
+    let lastVoiceUser = '';
+    async function sendVoiceToChat(text){
+      lastVoiceUser = text;
+      // detect language of user's speech and ask model to answer in that language
+      const lang = detectLang(text);
+      const langHint = (lang === 'hi-IN')
+        ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
+        : " Please reply in English. Please return PLAIN TEXT (no Markdown).";
+
+      vc.chatStatus.textContent='Status: thinking…'; vc.reply.textContent='';
+      try{
+        const r=await fetch('/api/chat',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({message: text + langHint})
+        });
+        if(!r.ok){ const err=await safeJson(r); throw new Error(err?.error||`HTTP ${r.status}`); }
+        const data=await r.json();
+        const reply = data?.reply || '';
+        vc.reply.textContent = reply;
+        vc.chatStatus.textContent='Status: reply received.';
+        vc.speakFullBtn.disabled = !reply;
+
+        if (vc.autoSpeak.checked && reply) {
+          const speechText = await decideSpeechText(text, reply, speakConciseToggle.checked);
+          const engine = currentEngine();
+          const voice = chooseVoice(engine, lang);
+          await speak(speechText, engine, voice);
+        }
+      }catch(e){ console.error(e); vc.chatStatus.textContent='Status: chat failed. Please retry.'; alert(`Chat error: ${e.message}`); }
+    }
+
+    $('#btnSpeakFullVoice').addEventListener('click', async ()=>{
+      const reply = vc.reply.textContent.trim();
+      if (!reply) return;
+      const lang = detectLang(reply);
+      const engine = currentEngine();
+      const voice = chooseVoice(engine, lang);
+      await speak(reply, engine, voice);
+    });
+
+    // ===== Concise vs Full speech decision =====
+    async function decideSpeechText(userMsg, fullReply, preferConcise){
+      if (asksForRecitation(userMsg) || isAlreadyShort(fullReply)) return fullReply;
+      if (userMsg.toLowerCase().includes('detailed spoken reply') || userMsg.toLowerCase().includes('speak the full')) {
+        return fullReply;
+      }
+      if (preferConcise) {
+        try {
+          const concise = await buildConciseSummary(userMsg, fullReply);
+          return concise.trim() ? concise : fullReply;
+        } catch (e) {
+          console.warn('Concise summary failed, falling back to full:', e);
+          return fullReply;
+        }
+      }
+      return fullReply;
+    }
+
+    // ===== Shared TTS player =====
+    const tts = { status: $('#speakStatus'), player: $('#ttsPlayer'),
+                  again: $('#btnSpeakAgain'), againFull: $('#btnSpeakAgainFull') };
+
+    tts.again.addEventListener('click', async ()=>{
+      const user = (lastTextUser || lastVoiceUser || '');
+      const reply = ($('#textReply').textContent || $('#voiceReply').textContent || '').trim();
+      if (!reply) return alert('No reply to speak.');
+      const lang = detectLang(user || reply);
+      const speechText = await decideSpeechText(user, reply, speakConciseToggle.checked);
+      const engine = currentEngine();
+      const voice = chooseVoice(engine, lang);
+      await speak(speechText, engine, voice);
+    });
+
+    tts.againFull.addEventListener('click', async ()=>{
+      const reply = ($('#textReply').textContent || $('#voiceReply').textContent || '').trim();
+      if (!reply) return alert('No reply to speak.');
+      const lang = detectLang(reply);
+      const engine = currentEngine();
+      const voice = chooseVoice(engine, lang);
+      await speak(reply, engine, voice);
+    });
+
+    // ===== Speak (calls /api/tts) — now strips Markdown before sending =====
+    async function speak(text, engine, voice){
+      tts.status.textContent='Status: generating audio…';
+      tts.player.classList.add('hidden'); tts.player.src='';
+      tts.again.disabled = true; tts.againFull.disabled = true;
+
+      const cleanedText = stripMarkdownForSpeech(text); // <= important
+
+      try{
+        const r = await fetch('/api/tts',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ text: cleanedText, engine, voice })
+        });
+        if(!r.ok){
+          const err = await safeJson(r);
+          throw new Error(err?.error || `HTTP ${r.status}`);
+        }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        tts.player.src = url;
+        tts.player.classList.remove('hidden');
+        tts.status.textContent = `Status: ready. Playing… (engine: ${engine})`;
+        tts.again.disabled = false; tts.againFull.disabled = false;
+        try { await tts.player.play(); } catch {}
+      } catch (e) {
+        console.error(e);
+        tts.status.textContent='Status: TTS failed. Switch engine or try again.';
+        alert(`TTS error: ${e.message}`);
+        tts.again.disabled = false; tts.againFull.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
