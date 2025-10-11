@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Atma Vani — Unified (Text + Voice) · Concise Speech</title>
+  <title>Atma Vani — Unified (Text + Voice) · Engine Toggle</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{--bg:#0e0f13;--card:#151824;--text:#e9eef7;--muted:#a9b3c7;--accent:#6ea8fe;--good:#27c093;--bad:#ff6b6b;--warn:#ffb020;--border:#23273a}
@@ -29,20 +29,30 @@
     .hidden{display:none!important}
     label.toggle{display:flex;align-items:center;gap:8px;color:#a9b3c7}
     small.hint{opacity:.8}
+    select{background:#1b2030;color:#e9eef7;border:1px solid var(--border);border-radius:10px;padding:8px 10px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Atma Vani — Unified (Text + Voice)</h1>
-    <p class="sub">Now with <strong>concise spoken summary (~45s)</strong> by default. If you ask to <em>recite</em> a mantra/bhajan/stotram/puja, it will <strong>automatically speak the full reply</strong>.</p>
+    <p class="sub">Engine toggle added. If you haven’t configured other providers yet, keep it on <b>OpenAI (default)</b>.</p>
 
+    <!-- Engine chooser (affects TTS only) -->
     <div class="card" style="margin-bottom:12px">
       <div class="row">
+        <label>Engine:</label>
+        <select id="engine">
+          <option value="openai" selected>OpenAI (default)</option>
+          <option value="azure">Azure</option>
+          <option value="google">Google</option>
+          <option value="sarvam">Sarvam</option>
+          <option value="elevenlabs">ElevenLabs</option>
+        </select>
         <label class="toggle">
           <input type="checkbox" id="speakConcise" checked />
           Speak concise summary (~45s) by default
         </label>
-        <span class="note" style="margin-left:8px">Tip: Click “Speak Full Reply” below any time for a longer audio.</span>
+        <span class="note">Tip: If a provider isn’t configured in Vercel, you’ll get a clear TTS error—switch back to OpenAI.</span>
       </div>
     </div>
 
@@ -53,9 +63,7 @@
         <textarea id="txtInput" placeholder="Type your question… e.g., “Give me 3 ways to improve focus.”"></textarea>
         <div class="row" style="margin-top:8px">
           <button id="btnSendText" class="primary">➡️ Send</button>
-          <label class="toggle">
-            <input type="checkbox" id="autoSpeakText" checked /> Auto-Speak after reply
-          </label>
+          <label class="toggle"><input type="checkbox" id="autoSpeakText" checked /> Auto-Speak after reply</label>
           <button id="btnSpeakFullText" disabled>🔊 Speak Full Reply</button>
         </div>
         <div class="note" id="textStatus" style="margin-top:10px">Status: waiting…</div>
@@ -111,7 +119,7 @@
       <div class="row" style="margin-top:8px">
         <button id="btnSpeakAgain" disabled>🔊 Speak Above Reply (Concise)</button>
         <button id="btnSpeakAgainFull" disabled>🔊 Speak Above Reply (Full)</button>
-        <small class="hint">“Concise” respects the 45s rule unless your question asks to <em>recite</em> content.</small>
+        <small class="hint">“Concise” respects the ~45s rule unless your question asks to recite.</small>
       </div>
     </div>
   </div>
@@ -135,17 +143,16 @@
       return RECITATION_KEYWORDS.some(k => t.includes(k));
     }
     function isAlreadyShort(text=''){
-      // If the reply is already under ~600 chars, just speak it.
-      return (text.trim().length <= 600);
+      return (text.trim().length <= 600); // ~45s-ish
     }
 
     // Build a concise spoken summary via /api/chat (second call)
     async function buildConciseSummary(userMsg, fullReply){
       const ask = [
         "You are preparing a SPOKEN summary for the user.",
-        "Create a concise, conversational summary of the assistant reply that comfortably fits within ~45 seconds of speech (~110-130 words).",
+        "Create a concise, conversational summary that fits within about 45 seconds of speech (~110-130 words).",
         "Prefer short sentences and simple wording.",
-        "No disclaimers, no prefaces like 'Here’s a summary:' — return only the summary text.",
+        "No prefaces like 'Here’s a summary:' — return only the summary text.",
         "If the user explicitly asked to recite a mantra, stotram, bhajan, aarti, puja, or similar ritual text, DO NOT SUMMARIZE: return the full text for recitation."
       ].join(' ');
 
@@ -160,6 +167,12 @@
       }
       const data = await r.json();
       return data?.reply || '';
+    }
+
+    // ===== Engine (TTS provider) =====
+    const engineSelect = $('#engine'); // openai | azure | google | sarvam | elevenlabs
+    function currentEngine(){
+      return engineSelect.value || 'openai';
     }
 
     // ===== TEXT CHAT =====
@@ -192,7 +205,7 @@
 
         if (txt.autoSpeak.checked && reply) {
           const speechText = await decideSpeechText(lastTextUser, reply, speakConciseToggle.checked);
-          await speak(speechText);
+          await speak(speechText, currentEngine());
         }
       } catch (e) {
         console.error(e);
@@ -204,7 +217,7 @@
     txt.speakFullBtn.addEventListener('click', async ()=>{
       const reply = txt.reply.textContent.trim();
       if (!reply) return;
-      await speak(reply);
+      await speak(reply, currentEngine());
     });
 
     // ===== VOICE CHAT =====
@@ -322,7 +335,7 @@
 
         if (vc.autoSpeak.checked && reply) {
           const speechText = await decideSpeechText(lastVoiceUser, reply, speakConciseToggle.checked);
-          await speak(speechText);
+          await speak(speechText, currentEngine());
         }
       }catch(e){ console.error(e); vc.chatStatus.textContent='Status: chat failed. Please retry.'; alert(`Chat error: ${e.message}`); }
     }
@@ -330,32 +343,24 @@
     $('#btnSpeakFullVoice').addEventListener('click', async ()=>{
       const reply = vc.reply.textContent.trim();
       if (!reply) return;
-      await speak(reply);
+      await speak(reply, currentEngine());
     });
 
     // ===== Concise vs Full speech decision =====
     async function decideSpeechText(userMsg, fullReply, preferConcise){
-      // If user asked to recite (mantra, bhajan, etc.) or the reply is already short → speak full.
       if (asksForRecitation(userMsg) || isAlreadyShort(fullReply)) return fullReply;
-
-      // If user explicitly asked for "detailed spoken reply", speak full.
       if (userMsg.toLowerCase().includes('detailed spoken reply') || userMsg.toLowerCase().includes('speak the full')) {
         return fullReply;
       }
-
-      // Otherwise, if concise is preferred → ask the model for a ~45s summary.
       if (preferConcise) {
         try {
           const concise = await buildConciseSummary(userMsg, fullReply);
-          // If the summary came back empty for some reason, fall back to full.
           return concise.trim() ? concise : fullReply;
         } catch (e) {
           console.warn('Concise summary failed, falling back to full:', e);
           return fullReply;
         }
       }
-
-      // If concise not preferred, speak full.
       return fullReply;
     }
 
@@ -364,39 +369,45 @@
                   again: $('#btnSpeakAgain'), againFull: $('#btnSpeakAgainFull') };
 
     tts.again.addEventListener('click', async ()=>{
-      // Prefer concise version if the toggle is ON and decision doesn’t need recitation.
-      // Use text reply first; if absent, use voice reply.
       const user = (lastTextUser || lastVoiceUser || '');
       const reply = ($('#textReply').textContent || $('#voiceReply').textContent || '').trim();
       if (!reply) return alert('No reply to speak.');
       const speechText = await decideSpeechText(user, reply, speakConciseToggle.checked);
-      await speak(speechText);
+      await speak(speechText, currentEngine());
     });
 
     tts.againFull.addEventListener('click', async ()=>{
       const reply = ($('#textReply').textContent || $('#voiceReply').textContent || '').trim();
       if (!reply) return alert('No reply to speak.');
-      await speak(reply);
+      await speak(reply, currentEngine());
     });
 
-    async function speak(text){
+    async function speak(text, engine){
       tts.status.textContent='Status: generating audio…';
       tts.player.classList.add('hidden'); tts.player.src='';
       tts.again.disabled = true; tts.againFull.disabled = true;
       try{
-        const r = await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
-        if(!r.ok){ const err=await safeJson(r); throw new Error(err?.error||`HTTP ${r.status}`); }
+        const r = await fetch('/api/tts',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ text, engine }) // <-- pass engine to backend
+        });
+        if(!r.ok){
+          const err = await safeJson(r);
+          throw new Error(err?.error || `HTTP ${r.status}`);
+        }
         const blob = await r.blob();
         const url = URL.createObjectURL(blob);
         tts.player.src = url;
         tts.player.classList.remove('hidden');
-        tts.status.textContent='Status: ready. Playing…';
+        tts.status.textContent = `Status: ready. Playing… (engine: ${engine})`;
         tts.again.disabled = false; tts.againFull.disabled = false;
         try { await tts.player.play(); } catch {}
       } catch (e) {
         console.error(e);
-        tts.status.textContent='Status: TTS failed. Please retry.';
+        tts.status.textContent='Status: TTS failed. Switch engine or try again.';
         alert(`TTS error: ${e.message}`);
+        tts.again.disabled = false; tts.againFull.disabled = false;
       }
     }
   </script>
