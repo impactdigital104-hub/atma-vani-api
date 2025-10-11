@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Atma Vani — Unified (Text + Voice)</title>
+  <title>Atma Vani — Unified (Text + Voice) · Concise Speech</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{--bg:#0e0f13;--card:#151824;--text:#e9eef7;--muted:#a9b3c7;--accent:#6ea8fe;--good:#27c093;--bad:#ff6b6b;--warn:#ffb020;--border:#23273a}
@@ -13,36 +13,50 @@
     h1{font-size:24px;margin:0 0 6px}.sub{margin:0 0 16px;color:var(--muted)}
     h2{font-size:18px;margin:0 0 8px}
     .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    button{appearance:none;border:1px solid var(--border);background:#1b2030;color:var(--text);padding:10px 14px;border-radius:12px;cursor:pointer;font-size:14px;transition:.15s}
+    button{appearance:none;border:1px solid var(--border);background:#1b2030;color:#e9eef7;padding:10px 14px;border-radius:12px;cursor:pointer;font-size:14px;transition:.15s}
     button:hover{background:#1e2538}.primary{background:var(--accent);color:#0b1220;border-color:transparent}
     .danger{background:var(--bad);color:#0b1220;border-color:transparent}
-    .status{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#121623;color:var(--muted);font-size:13px}
-    .dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.live{background:var(--bad);box-shadow:0 0 0 6px rgba(255,0,0,.15);animation:pulse 1.2s infinite ease-in-out}
+    .status{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#121623;color:#a9b3c7;font-size:13px}
+    .dot{width:10px;height:10px;border-radius:50%;background:#a9b3c7}
+    .dot.live{background:var(--bad);box-shadow:0 0 0 6px rgba(255,0,0,.15);animation:pulse 1.2s infinite ease-in-out}
     @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,0,0,.2)}70%{box-shadow:0 0 0 10px rgba(255,0,0,0)}100%{box-shadow:0 0 0 0 rgba(255,0,0,0)}}
-    textarea{width:100%;min-height:90px;background:#0f1421;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:12px;resize:vertical}
+    textarea{width:100%;min-height:90px;background:#0f1421;color:#e9eef7;border:1px solid var(--border);border-radius:12px;padding:12px;resize:vertical}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;font-size:13px}
     .reply{white-space:pre-wrap;line-height:1.55}
-    .note{background:#101521;border:1px solid var(--border);color:var(--muted);border-radius:12px;padding:10px 12px;font-size:13px}
+    .note{background:#101521;border:1px solid var(--border);color:#a9b3c7;border-radius:12px;padding:10px 12px;font-size:13px}
     .kv{display:grid;grid-template-columns:110px 1fr;gap:8px 12px;margin:12px 0;font-size:13px}
     audio{width:100%}
     .hidden{display:none!important}
+    label.toggle{display:flex;align-items:center;gap:8px;color:#a9b3c7}
+    small.hint{opacity:.8}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Atma Vani — Unified (Text + Voice)</h1>
-    <p class="sub">MVP: Text and voice share the same backend (<code>/api/chat</code>, <code>/api/stt</code>, <code>/api/tts</code>). No secrets in client; all keys live on server.</p>
+    <p class="sub">Now with <strong>concise spoken summary (~45s)</strong> by default. If you ask to <em>recite</em> a mantra/bhajan/stotram/puja, it will <strong>automatically speak the full reply</strong>.</p>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="row">
+        <label class="toggle">
+          <input type="checkbox" id="speakConcise" checked />
+          Speak concise summary (~45s) by default
+        </label>
+        <span class="note" style="margin-left:8px">Tip: Click “Speak Full Reply” below any time for a longer audio.</span>
+      </div>
+    </div>
 
     <div class="grid">
       <!-- Text Chat -->
       <div class="card">
         <h2>Text Chat</h2>
-        <textarea id="txtInput" placeholder="Type your question…"></textarea>
+        <textarea id="txtInput" placeholder="Type your question… e.g., “Give me 3 ways to improve focus.”"></textarea>
         <div class="row" style="margin-top:8px">
           <button id="btnSendText" class="primary">➡️ Send</button>
-          <label style="display:flex;align-items:center;gap:8px;color:#a9b3c7">
-            <input type="checkbox" id="autoSpeakText" checked /> Auto-Speak Reply
+          <label class="toggle">
+            <input type="checkbox" id="autoSpeakText" checked /> Auto-Speak after reply
           </label>
+          <button id="btnSpeakFullText" disabled>🔊 Speak Full Reply</button>
         </div>
         <div class="note" id="textStatus" style="margin-top:10px">Status: waiting…</div>
         <div style="margin-top:10px"><strong>Assistant Reply</strong></div>
@@ -59,15 +73,10 @@
           <button id="btnStop" class="danger" disabled>⏹️ Stop</button>
           <button id="btnReset" disabled>🔁 Reset</button>
           <button id="btnTranscribe" disabled>📝 Transcribe</button>
-          <label style="display:flex;align-items:center;gap:8px;color:#a9b3c7">
-            <input type="checkbox" id="autoSTT" checked /> Auto-transcribe on Stop
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;color:#a9b3c7">
-            <input type="checkbox" id="autoChat" checked /> Auto-send to Chat
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;color:#a9b3c7">
-            <input type="checkbox" id="autoSpeakVoice" checked /> Auto-Speak Reply
-          </label>
+          <label class="toggle"><input type="checkbox" id="autoSTT" checked /> Auto-transcribe on Stop</label>
+          <label class="toggle"><input type="checkbox" id="autoChat" checked /> Auto-send to Chat</label>
+          <label class="toggle"><input type="checkbox" id="autoSpeakVoice" checked /> Auto-Speak after reply</label>
+          <button id="btnSpeakFullVoice" disabled>🔊 Speak Full Reply</button>
         </div>
 
         <div class="kv">
@@ -100,32 +109,78 @@
       <div class="note" id="speakStatus">Status: waiting for a reply…</div>
       <audio id="ttsPlayer" controls class="hidden" style="margin-top:8px"></audio>
       <div class="row" style="margin-top:8px">
-        <button id="btnSpeakAgain" disabled>🔊 Speak Above Reply</button>
+        <button id="btnSpeakAgain" disabled>🔊 Speak Above Reply (Concise)</button>
+        <button id="btnSpeakAgainFull" disabled>🔊 Speak Above Reply (Full)</button>
+        <small class="hint">“Concise” respects the 45s rule unless your question asks to <em>recite</em> content.</small>
       </div>
     </div>
   </div>
 
   <script>
-    // ---------- Utilities ----------
+    // ===== Utilities =====
     const $ = (s) => document.querySelector(s);
     async function safeJson(r){ try{ return await r.json() } catch { return null } }
     function prettyBytes(b){ if(!b) return '0 KB'; const u=['B','KB','MB','GB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i] }
     function chooseAudioType(){ const c=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg']; for(const t of c) if(MediaRecorder.isTypeSupported(t)) return t; return '' }
 
-    // ---------- TEXT CHAT ----------
+    // Heuristic: requests that should bypass concise speech (speak full)
+    const RECITATION_KEYWORDS = [
+      'mantra','stotra','stotram','stotras','stuti','bhajan','bhajans',
+      'aarti','aartī','arati','puja','pooja','pūjā','sloka','shloka','śloka',
+      'chant','recite','repeat after me','path','paath'
+    ];
+
+    function asksForRecitation(text=''){
+      const t = text.toLowerCase();
+      return RECITATION_KEYWORDS.some(k => t.includes(k));
+    }
+    function isAlreadyShort(text=''){
+      // If the reply is already under ~600 chars, just speak it.
+      return (text.trim().length <= 600);
+    }
+
+    // Build a concise spoken summary via /api/chat (second call)
+    async function buildConciseSummary(userMsg, fullReply){
+      const ask = [
+        "You are preparing a SPOKEN summary for the user.",
+        "Create a concise, conversational summary of the assistant reply that comfortably fits within ~45 seconds of speech (~110-130 words).",
+        "Prefer short sentences and simple wording.",
+        "No disclaimers, no prefaces like 'Here’s a summary:' — return only the summary text.",
+        "If the user explicitly asked to recite a mantra, stotram, bhajan, aarti, puja, or similar ritual text, DO NOT SUMMARIZE: return the full text for recitation."
+      ].join(' ');
+
+      const payload = `${ask}\n\nUser message:\n${userMsg}\n\nAssistant reply:\n${fullReply}`;
+      const r = await fetch('/api/chat', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ message: payload })
+      });
+      if (!r.ok) {
+        const e = await safeJson(r);
+        throw new Error(e?.error || `HTTP ${r.status}`);
+      }
+      const data = await r.json();
+      return data?.reply || '';
+    }
+
+    // ===== TEXT CHAT =====
     const txt = {
       input: $('#txtInput'),
       send: $('#btnSendText'),
       status: $('#textStatus'),
       reply: $('#textReply'),
-      autoSpeak: $('#autoSpeakText')
+      autoSpeak: $('#autoSpeakText'),
+      speakFullBtn: $('#btnSpeakFullText')
     };
+    const speakConciseToggle = $('#speakConcise');
 
+    let lastTextUser = '';
     txt.send.addEventListener('click', async ()=>{
       const message = (txt.input.value || '').trim();
       if (!message) { txt.input.focus(); return; }
+      lastTextUser = message;
       txt.status.textContent = 'Status: thinking…';
       txt.reply.textContent = '';
+      txt.speakFullBtn.disabled = true;
       try {
         const r = await fetch('/api/chat',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message }) });
         if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
@@ -133,8 +188,12 @@
         const reply = data?.reply || '';
         txt.reply.textContent = reply;
         txt.status.textContent = 'Status: reply received.';
-        // Auto-speak via shared player
-        if (txt.autoSpeak.checked && reply) await speak(reply);
+        txt.speakFullBtn.disabled = !reply;
+
+        if (txt.autoSpeak.checked && reply) {
+          const speechText = await decideSpeechText(lastTextUser, reply, speakConciseToggle.checked);
+          await speak(speechText);
+        }
       } catch (e) {
         console.error(e);
         txt.status.textContent = 'Status: failed. Please retry.';
@@ -142,7 +201,13 @@
       }
     });
 
-    // ---------- VOICE CHAT ----------
+    txt.speakFullBtn.addEventListener('click', async ()=>{
+      const reply = txt.reply.textContent.trim();
+      if (!reply) return;
+      await speak(reply);
+    });
+
+    // ===== VOICE CHAT =====
     const vc = {
       httpsNote: $('#httpsNote'),
       btnRecord: $('#btnRecord'), btnStop: $('#btnStop'), btnReset: $('#btnReset'), btnTranscribe: $('#btnTranscribe'),
@@ -151,7 +216,8 @@
       player: $('#player'), downloadWrap: $('#downloadWrap'), downloadLink: $('#downloadLink'),
       dot: $('#dot'), stateLabel: $('#stateLabel'),
       txStatus: $('#txStatus'), transcript: $('#transcript'),
-      chatStatus: $('#chatStatus'), reply: $('#voiceReply')
+      chatStatus: $('#chatStatus'), reply: $('#voiceReply'),
+      speakFullBtn: $('#btnSpeakFullVoice')
     };
 
     if (location.protocol!=='https:' && location.hostname!=='localhost') {
@@ -191,17 +257,19 @@
       vc.size.textContent='0 KB'; vc.chunks.textContent='0'; vc.timer.textContent='00:00.0'; vc.micStatus.textContent='Not requested';
       vc.transcript.textContent=''; vc.txStatus.textContent='Status: waiting for a recording…';
       vc.reply.textContent=''; vc.chatStatus.textContent='Status: waiting for a transcript…';
+      vc.speakFullBtn.disabled = true;
       setState(false);
     }
-    vc.btnReset.addEventListener('click', resetAll);
+    $('#btnReset').addEventListener('click', resetAll);
 
-    vc.btnRecord.addEventListener('click', async ()=>{
+    $('#btnRecord').addEventListener('click', async ()=>{
       try{
         await ensureMic();
         chunks=[]; bytes=0; recordedBlob=null; setState(true);
         vc.player.classList.add('hidden'); vc.downloadWrap.classList.add('hidden');
         vc.transcript.textContent=''; vc.txStatus.textContent='Status: recording…';
         vc.reply.textContent=''; vc.chatStatus.textContent='Status: waiting for a transcript…';
+        vc.speakFullBtn.disabled = true;
 
         recorder = new MediaRecorder(stream, mime?{ mimeType:mime }:undefined);
         recorder.ondataavailable = e => { if(e.data && e.data.size>0){ chunks.push(e.data); bytes+=e.data.size; vc.size.textContent=prettyBytes(bytes); vc.chunks.textContent=String(chunks.length); } };
@@ -218,12 +286,12 @@
       }catch(e){ console.error(e); alert('Could not start recording. Check mic permission.'); setState(false); }
     });
 
-    vc.btnStop.addEventListener('click', ()=>{
+    $('#btnStop').addEventListener('click', ()=>{
       if(recorder && recorder.state==='recording'){ try{ recorder.stop() }catch{} }
       if(stream){ for(const t of stream.getTracks()) t.stop(); stream=null; }
     });
 
-    vc.btnTranscribe.addEventListener('click', transcribe);
+    $('#btnTranscribe').addEventListener('click', transcribe);
     async function transcribe(){
       if(!window.lastRecordingBlob){ alert('Please record something first.'); return; }
       vc.txStatus.textContent='Status: uploading for transcription…';
@@ -235,11 +303,13 @@
         if(!resp.ok){ const err=await safeJson(resp); throw new Error(err?.error||`HTTP ${resp.status}`); }
         const data=await resp.json(); const text=data?.text||'';
         vc.txStatus.textContent=`Status: transcribed in ${data?.sttMs ?? '–'} ms.`; vc.transcript.textContent=text; setState(false);
-        if (vc.autoChat.checked && text) await sendVoiceToChat(text); // auto
+        if (vc.autoChat.checked && text) await sendVoiceToChat(text);
       }catch(e){ console.error(e); vc.txStatus.textContent='Status: transcription failed. Please retry.'; alert(`Transcription error: ${e.message}`); }
     }
 
+    let lastVoiceUser = '';
     async function sendVoiceToChat(text){
+      lastVoiceUser = text;
       vc.chatStatus.textContent='Status: thinking…'; vc.reply.textContent='';
       try{
         const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
@@ -248,23 +318,71 @@
         const reply = data?.reply || '';
         vc.reply.textContent = reply;
         vc.chatStatus.textContent='Status: reply received.';
-        if (vc.autoSpeak.checked && reply) await speak(reply);
+        vc.speakFullBtn.disabled = !reply;
+
+        if (vc.autoSpeak.checked && reply) {
+          const speechText = await decideSpeechText(lastVoiceUser, reply, speakConciseToggle.checked);
+          await speak(speechText);
+        }
       }catch(e){ console.error(e); vc.chatStatus.textContent='Status: chat failed. Please retry.'; alert(`Chat error: ${e.message}`); }
     }
 
-    // ---------- SHARED TTS ----------
-    const tts = { status: $('#speakStatus'), player: $('#ttsPlayer'), speakAgain: $('#btnSpeakAgain') };
+    $('#btnSpeakFullVoice').addEventListener('click', async ()=>{
+      const reply = vc.reply.textContent.trim();
+      if (!reply) return;
+      await speak(reply);
+    });
 
-    tts.speakAgain.addEventListener('click', async ()=>{
-      const text = ($('#voiceReply').textContent || $('#textReply').textContent || '').trim();
-      if (!text) return alert('No reply to speak.');
-      await speak(text);
+    // ===== Concise vs Full speech decision =====
+    async function decideSpeechText(userMsg, fullReply, preferConcise){
+      // If user asked to recite (mantra, bhajan, etc.) or the reply is already short → speak full.
+      if (asksForRecitation(userMsg) || isAlreadyShort(fullReply)) return fullReply;
+
+      // If user explicitly asked for "detailed spoken reply", speak full.
+      if (userMsg.toLowerCase().includes('detailed spoken reply') || userMsg.toLowerCase().includes('speak the full')) {
+        return fullReply;
+      }
+
+      // Otherwise, if concise is preferred → ask the model for a ~45s summary.
+      if (preferConcise) {
+        try {
+          const concise = await buildConciseSummary(userMsg, fullReply);
+          // If the summary came back empty for some reason, fall back to full.
+          return concise.trim() ? concise : fullReply;
+        } catch (e) {
+          console.warn('Concise summary failed, falling back to full:', e);
+          return fullReply;
+        }
+      }
+
+      // If concise not preferred, speak full.
+      return fullReply;
+    }
+
+    // ===== Shared TTS player =====
+    const tts = { status: $('#speakStatus'), player: $('#ttsPlayer'),
+                  again: $('#btnSpeakAgain'), againFull: $('#btnSpeakAgainFull') };
+
+    tts.again.addEventListener('click', async ()=>{
+      // Prefer concise version if the toggle is ON and decision doesn’t need recitation.
+      // Use text reply first; if absent, use voice reply.
+      const user = (lastTextUser || lastVoiceUser || '');
+      const reply = ($('#textReply').textContent || $('#voiceReply').textContent || '').trim();
+      if (!reply) return alert('No reply to speak.');
+      const speechText = await decideSpeechText(user, reply, speakConciseToggle.checked);
+      await speak(speechText);
+    });
+
+    tts.againFull.addEventListener('click', async ()=>{
+      const reply = ($('#textReply').textContent || $('#voiceReply').textContent || '').trim();
+      if (!reply) return alert('No reply to speak.');
+      await speak(reply);
     });
 
     async function speak(text){
       tts.status.textContent='Status: generating audio…';
       tts.player.classList.add('hidden'); tts.player.src='';
-      tts.speakAgain.disabled = true;
+      tts.again.disabled = true; tts.againFull.disabled = true;
       try{
         const r = await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
         if(!r.ok){ const err=await safeJson(r); throw new Error(err?.error||`HTTP ${r.status}`); }
@@ -273,7 +391,7 @@
         tts.player.src = url;
         tts.player.classList.remove('hidden');
         tts.status.textContent='Status: ready. Playing…';
-        tts.speakAgain.disabled = false;
+        tts.again.disabled = false; tts.againFull.disabled = false;
         try { await tts.player.play(); } catch {}
       } catch (e) {
         console.error(e);
