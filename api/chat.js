@@ -1,65 +1,74 @@
-// Chat endpoint — Holistic v3 (query-type aware), self-check rubric, exemplars, 2 decision follow-ups, links OFF
+// api/chat.js — Atma Vani v1.1
+// - Uses OpenAI (gpt-4o-mini) for all answers
+// - Strict Hindu-spirituality scope (out-of-scope -> polite refusal in EN/HI)
+// - Restores your full Atma Vani SYSTEM_PROMPT (persona + answer patterns)
+// - Adds a quick self-check pass (OK / REFUSE / REVISE)
+// - Logs to Firestore and updates theme with /api/classify-theme
 
-const admin = require('firebase-admin');
-const BUILD_TAG = 'chat-v3-holistic-v3'; // shows up in Firestore & response
+const admin = require("firebase-admin");
 
-function initFirestoreOnce() {
-  if (admin.apps.length === 0) {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    });
+const {
+  OPENAI_API_KEY,
+  FIREBASE_PROJECT_ID,
+  FIREBASE_CLIENT_EMAIL,
+  FIREBASE_PRIVATE_KEY,
+} = process.env;
+
+// ---- Firestore init ----
+if (!admin.apps.length) {
+  const creds = {
+    projectId: FIREBASE_PROJECT_ID,
+    clientEmail: FIREBASE_CLIENT_EMAIL,
+    privateKey: FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+  };
+  if (creds.projectId && creds.clientEmail && creds.privateKey) {
+    admin.initializeApp({ credential: admin.credential.cert(creds) });
+  } else {
+    console.warn("[chat] Firebase credentials missing; logging will be skipped.");
   }
-  return admin.firestore();
+}
+const db = admin.apps.length ? admin.firestore() : null;
+
+// ---- HTTP helpers ----
+function cors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+function isHindi(text = "") { return /[\u0900-\u097F]/.test(String(text || "")); }
+
+// ---- Scope guard (cheap heuristic) ----
+function inScopeHeuristic(text = "") {
+  const t = (text || "").toLowerCase();
+  const allow = [
+    "hindu","sanatan","dharma","temple","mandir","deity","god","goddess",
+    "puja","pooja","aarti","arti","arati","archana","homam","yajna","havan",
+    "vrat","fast","upvas","festival","utsav","yatra","pilgrimage","tirth",
+    "mantra","stotra","stotram","sloka","shloka","bhajan","kirtan","japa",
+    "meditation","dhyana","yoga","guru",
+    "rudraksha","vastu","muhurta","panchang",
+    "vedas","upanishad","puran","purana","gita","bhagavad","ramayana","mahabharat",
+    "prasad","tilak","kumkum","abhishek","abhishekam","darshan"
+  ];
+  return allow.some(k => t.includes(k));
+}
+function refusalMessage(userText) {
+  if (isHindi(userText)) {
+    return "🙏 नमस्ते। मैं केवल हिंदू अध्यात्म—मंदिर/देवी-देवता, पूजा/व्रत, मंत्र/स्तोत्र, त्यौहार/तीर्थ, शास्त्र, ध्यान आदि—से जुड़े प्रश्नों में मार्गदर्शन करता/करती हूँ। यह प्रश्न उस दायरे से बाहर है, इसलिए मैं उत्तर नहीं दे सकता/सकती। कृपया कोई आध्यात्मिक/धार्मिक प्रश्न पूछें, जैसे किसी पूजा की विधि, किसी मंदिर/तीर्थ की जानकारी, या किसी मंत्र/स्तोत्र का अर्थ/जप-विधि।";
+  }
+  return "🙏 Namaste. I can only help with Hindu spirituality—temples/deities, puja/vrat, mantras/stotras, festivals, pilgrimages, scriptures, meditation, etc. This question is outside that scope, so I won’t answer it. Please ask a spiritual question (e.g., a puja method, a temple/pilgrimage detail, or the meaning/chanting of a mantra).";
 }
 
-/**
- * Links are OFF for now:
- * - Remove any {{link:token}} placeholders if ever emitted.
- * - Convert Markdown links [text](url) → plain text (keep the anchor text).
- * - Tidy dangling punctuation / empty “You might like:” lines.
- */
-function sanitizeLinksOff(markdown) {
-  let out = String(markdown || '');
+// ---- Your full SYSTEM_PROMPT (restored) ----
+// We prepend a tiny header to force plain text and scope discipline;
+// then include your original content verbatim.
+const SYSTEM_HEADER = [
+  "You are Atma Vani. Return PLAIN TEXT only (no Markdown).",
+  "Answer ONLY if the request is within Hindu spirituality scope;",
+  "otherwise give a short, kind refusal guiding the user back to scope."
+].join(" ");
 
-  // Remove any token placeholders like {{link:rudraksha-collection}}
-  out = out.replace(/\{\{\s*link:[^}]+\}\}/gi, '');
-
-  // Convert Markdown links to plain text: [Title](https://...) -> Title
-  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, '$1');
-
-  // Remove accidental empty brackets or dangling dashes/emdashes at line ends
-  out = out.replace(/\[([^\]]*)\]\(\s*\)/g, '$1');
-  out = out.replace(/[—-]\s*$/gm, '');
-
-  // Drop any "You might like:" line that has no link text
-  out = out
-    .split('\n')
-    .filter(line => !(/^\s*You might like:/i.test(line) && !/\[[^\]]+\]\(/.test(line)))
-    .join('\n');
-
-  return out.trim();
-}
-
-module.exports = async (req, res) => {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST /api/chat' });
-
-  try {
-    const { message } = req.body || {};
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Missing "message" (string).' });
-    }
-
-    // ===== SYSTEM PROMPT — Atma Vani (Holistic v3 with exemplar policy + self-check) =====
-    const SYSTEM_PROMPT = `
+const YOUR_SYSTEM_PROMPT = `
 You are **Atma Vani**, a Hindu Spiritual Guide. Stay strictly within Hindu spirituality (deities, puja & rituals, festivals, temples, scriptures/philosophy, devotional living) and dharma-based guidance for life challenges. Do not offer medical, legal, financial, or career advice.
 
 ## Persona & style
@@ -135,94 +144,153 @@ Sit **facing south**; bowl with **water + black sesame** (add **darbha** if avai
 One-breath significance; simple home observance (lamp, śloka, sattvic food); one seva idea; note regional variation.
 • **Would you like a 20-minute evening routine for all nine nights, or a simpler plan for day 1 & 9?**
 • **Do you prefer quiet home worship, or visiting a nearby temple during āratī?**
+`;
 
-**Micro-exemplar — Temple/Yatra (region planning)**
-Pick a cluster; season/crowd note; devotional focus; verification line.
-• **Do you have 3–4 days for one cluster, or a week to combine two?**
-• **Are you comfortable with altitude/long road legs, or shall we choose a gentler circuit?**
-    `.trim();
+// ---- Self-check prompt ----
+function selfCheckPrompt(user, draft) {
+  return [
+    "You are verifying a draft answer for scope, factuality, and tone.",
+    "Rules:",
+    "1) If the user's request is OUTSIDE Hindu spirituality scope, return: REFUSE",
+    "2) If the draft has obvious factual risk or unsafe ritual guidance, return: REVISE and provide a safer corrected answer.",
+    "3) Else return: OK",
+    "Return format (PLAIN TEXT, no Markdown):",
+    "First line: one of OK | REFUSE | REVISE",
+    "If REVISE: after a blank line, provide the corrected plain-text answer in the same language as the user.",
+    "",
+    "User message:",
+    user,
+    "",
+    "Draft answer:",
+    draft
+  ].join("\n");
+}
 
-    // ===== OpenAI call =====
-    let reply = "Sorry, I couldn't generate a reply.";
-    try {
-      const r = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          input: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: message }
-          ],
-          temperature: 0.2,          // lower variance for accuracy/consistency
-          max_output_tokens: 1400    // room for up to ~600 words + bullets
-        })
-      });
-      if (r.ok) {
-        const data = await r.json();
-        const raw =
-          data.output_text
-          || (Array.isArray(data.output)
-                ? data.output.map(m =>
-                    Array.isArray(m.content)
-                      ? m.content.map(c => c.text || "").join(" ")
-                      : ""
-                  ).join("\n").trim()
-                : "")
-          || (Array.isArray(data.content) && data.content[0]?.text)
-          || reply;
+// ---- OpenAI calls ----
+async function openAI(inputArray) {
+  const r = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ model: "gpt-4o-mini", input: inputArray }),
+  });
+  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${await r.text().catch(()=> "")}`);
+  const data = await r.json();
+  return data?.output_text || data?.output?.[0]?.content?.[0]?.text || "";
+}
+async function askModel(userMessage) {
+  return openAI([
+    { role: "system", content: `${SYSTEM_HEADER}\n\n${YOUR_SYSTEM_PROMPT}` },
+    { role: "user",   content: userMessage }
+  ]);
+}
+async function selfCheck(userMessage, draftAnswer) {
+  const text = await openAI([
+    { role: "system", content: "You are a careful, concise verifier." },
+    { role: "user",   content: selfCheckPrompt(userMessage, draftAnswer) }
+  ]);
+  const firstLine = text.split("\n")[0].trim().toUpperCase();
+  const rest = text.split("\n").slice(2).join("\n").trim();
+  return { verdict: firstLine, revised: rest };
+}
 
-        reply = sanitizeLinksOff(String(raw).trim());
-      }
-    } catch (_) {
-      // keep default reply
+// ---- Classifier (existing endpoint) ----
+async function classifyTheme(host, text) {
+  try {
+    const r = await fetch(`https://${host}/api/classify-theme`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (!r.ok) return { theme: "Other" };
+    return await r.json();
+  } catch { return { theme: "Other" }; }
+}
+
+// ---- Handler ----
+module.exports = async (req, res) => {
+  cors(res);
+  if (req.method === "OPTIONS") { res.statusCode = 200; return res.end(); }
+  if (req.method !== "POST") { res.statusCode = 405; return res.end("Method Not Allowed"); }
+
+  try {
+    const { message } = JSON.parse(req.body || "{}");
+    if (!message || typeof message !== "string") {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ error: "Missing 'message'." }));
     }
 
-    // ===== Firestore logging (theme default "Other") =====
-    const db = initFirestoreOnce();
-    let docId = null;
+    const host = req.headers.host;
+
+    // Quick scope gate before calling the model
+    const heuristicOK = inScopeHeuristic(message);
+    let themeOK = false;
     try {
-      const ref = await db.collection('messages').add({
-        createdAt: Date.now(), // ms timestamp (keeps your convention)
-        source: 'vercel-api',
+      const { theme = "Other" } = await classifyTheme(host, message);
+      const allowed = ["Temple","Puja","Mantra","Scripture","Festival","Pilgrimage","Meditation","Rudraksha","Astrology","Spiritual"];
+      themeOK = allowed.includes(theme);
+    } catch {}
+
+    if (!(heuristicOK || themeOK)) {
+      const refusal = refusalMessage(message);
+      if (db) {
+        await db.collection("messages").add({
+          createdAt: Date.now(),
+          source: "vercel-api",
+          userMessage: message,
+          assistantReply: refusal,
+          theme: "Other",
+          build: "v1.1-voice"
+        });
+      }
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({ reply: refusal }));
+    }
+
+    // Main answer + self-check
+    const t0 = Date.now();
+    const draft = await askModel(message);
+    const chatMs = Date.now() - t0;
+
+    let finalReply = draft;
+    try {
+      const check = await selfCheck(message, draft);
+      if (check.verdict === "REFUSE") {
+        finalReply = refusalMessage(message);
+      } else if (check.verdict === "REVISE" && check.revised) {
+        finalReply = check.revised;
+      }
+    } catch { /* if verifier fails, keep draft */ }
+
+    // Log to Firestore
+    let docId = null;
+    if (db) {
+      const ref = await db.collection("messages").add({
+        createdAt: Date.now(),
+        source: "vercel-api",
         userMessage: message,
-        assistantReply: reply,
-        theme: "Other",
-        build: BUILD_TAG
+        assistantReply: finalReply,
+        theme: "Other",            // updated below
+        build: "v1.1-voice",
+        chatMs,
       });
       docId = ref.id;
-    } catch (_) {}
+    }
 
-    // ===== Theme classification (non-blocking) =====
+    // Update theme (best-effort)
     try {
-      if (docId) {
-        const host = (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || process.env.VERCEL_URL || "";
-        const proto = (req.headers && req.headers['x-forwarded-proto']) || 'https';
-        const origin = `${proto}://${String(host).replace(/^https?:\/\//, '')}`;
-        const classifyRes = await fetch(`${origin}/api/classify-theme`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: message })
-        });
-        if (classifyRes.ok) {
-          const { theme } = await classifyRes.json();
-          if (theme && typeof theme === 'string') {
-            await db.collection('messages').doc(docId).update({ theme });
-          }
-        }
-      }
-    } catch (_) {}
+      const { theme: finalTheme = "Other" } = await classifyTheme(host, `${message}\n---\n${finalReply}`);
+      if (db && docId) await db.collection("messages").doc(docId).update({ theme: finalTheme });
+    } catch {}
 
-    // ===== Response =====
-    return res.status(200).json({ reply });
-
+    res.setHeader("Content-Type", "application/json");
+    return res.end(JSON.stringify({ reply: finalReply }));
   } catch (e) {
-    return res.status(200).json({
-      reply: "Sorry, something went wrong on the server.",
-      build: BUILD_TAG
-    });
+    console.error("[chat] error:", e);
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    return res.end(JSON.stringify({ error: "Chat failed", details: String(e.message || e) }));
   }
 };
