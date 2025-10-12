@@ -1,13 +1,16 @@
 // File: api/tts.js
-// Purpose: Text-to-Speech with multiple providers, returns MP3 audio.
-// Providers (choose via env TTS_PROVIDER): openai | elevenlabs | azure | google | sarvam
-// Defaults to OpenAI. Keep secrets ONLY in Vercel env vars.
+// Purpose: Text-to-Speech (Google only) with pre-normalization to avoid awkward speech.
+// Returns MP3 audio.
 //
 // Frontend usage (unchanged):
 //   POST /api/tts  { "text": "Hello", "voice": "optional" }  -> audio/mpeg
 //
-// Optional request override (kept simple for testing):
-//   You may pass { engine: "azure" } or a query param ?engine=azure to override env.
+// Env required:
+//   GCP_TTS_API_KEY
+// Optional env:
+//   GCP_TTS_VOICE (default en-IN-Neural2-A / hi-IN-Neural2-A auto-chosen)
+//   GCP_TTS_LANG  (e.g., en-IN or hi-IN). If unset, we infer from voice name.
+//   USE_TTS_SSML=1 to send SSML instead of plain text
 //
 // CORS is open for MVP. Tighten in prod.
 
@@ -30,39 +33,28 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
-    const text = ((body && body.text) || '').trim();
+    const rawText = ((body && body.text) || '').trim();
     const requestedVoice = (body && body.voice) ? String(body.voice) : '';
-    const reqEngine = (body && body.engine) ? String(body.engine) : (getQueryEngine(req.url) || '');
-    if (!text) {
+    // Engine overrides ignored by design (Google-only)
+    if (!rawText) {
       res.writeHead(400, { ...CORS, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Missing "text" in JSON body' }));
     }
 
-    // provider selection: request override -> env -> default
-    const provider = (reqEngine || process.env.TTS_PROVIDER || 'openai').toLowerCase();
+    // Detect language from content (Devanagari -> hi, else en)
+    const lang = isDevanagari(rawText) ? 'hi' : 'en';
 
-    let audioBuffer, ttsMs, providerName = provider;
+    // Pre-normalize text so TTS doesn’t read symbols literally
+    const text = normalizeForTTS(rawText, lang);
 
-    if (provider === 'openai') {
-      ({ audioBuffer, ttsMs } = await ttsOpenAI(text, requestedVoice));
-    } else if (provider === 'elevenlabs') {
-      ({ audioBuffer, ttsMs } = await ttsElevenLabs(text, requestedVoice));
-    } else if (provider === 'azure') {
-      ({ audioBuffer, ttsMs } = await ttsAzure(text, requestedVoice));
-    } else if (provider === 'google') {
-      ({ audioBuffer, ttsMs } = await ttsGoogle(text, requestedVoice));
-    } else if (provider === 'sarvam') {
-      ({ audioBuffer, ttsMs } = await ttsSarvam(text, requestedVoice));
-    } else {
-      providerName = 'openai';
-      ({ audioBuffer, ttsMs } = await ttsOpenAI(text, requestedVoice));
-    }
+    // Google TTS
+    const { audioBuffer, ttsMs } = await ttsGoogle(text, requestedVoice, lang);
 
     res.writeHead(200, {
       ...CORS,
       'Content-Type': 'audio/mpeg',
       'Cache-Control': 'no-store',
-      'X-TTS-Provider': providerName,
+      'X-TTS-Provider': 'google',
       'X-TTS-MS': String(ttsMs || 0),
     });
     return res.end(audioBuffer);
@@ -74,131 +66,42 @@ module.exports = async (req, res) => {
   }
 };
 
-// ---------- Provider: OpenAI ----------
-async function ttsOpenAI(text, voiceInput) {
-  const model = process.env.TTS_MODEL || 'tts-1';
-  const voice = voiceInput || process.env.DEFAULT_TTS_VOICE || 'alloy';
-  const format = 'mp3';
-
-  mustHave(process.env.OPENAI_API_KEY, 'Missing OPENAI_API_KEY');
-
-  const t0 = Date.now();
-  const r = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model, voice, input: text, format }),
-  });
-  if (!r.ok) {
-    const errText = await r.text().catch(() => '');
-    throw new Error(`OpenAI TTS error ${r.status}: ${errText}`);
-  }
-  const buf = Buffer.from(await r.arrayBuffer());
-  return { audioBuffer: buf, ttsMs: Date.now() - t0 };
-}
-
-// ---------- Provider: ElevenLabs ----------
-async function ttsElevenLabs(text, voiceInput) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  mustHave(apiKey, 'Missing ELEVENLABS_API_KEY');
-
-  const defaultVoiceId = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // Rachel (public demo)
-  const voiceId = parseElevenVoice(voiceInput) || defaultVoiceId;
-
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
-
-  const t0 = Date.now();
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': apiKey,
-      'Content-Type': 'application/json',
-      'Accept': 'audio/mpeg',
-    },
-    body: JSON.stringify({
-      text,
-      model_id: 'eleven_multilingual_v2',
-      voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.0, use_speaker_boost: true }
-    }),
-  });
-  if (!r.ok) {
-    const errText = await r.text().catch(() => '');
-    throw new Error(`ElevenLabs TTS error ${r.status}: ${errText}`);
-  }
-  const buf = Buffer.from(await r.arrayBuffer());
-  return { audioBuffer: buf, ttsMs: Date.now() - t0 };
-}
-function parseElevenVoice(v) {
-  if (!v) return '';
-  // if client passes "eleven:<VOICE_ID>"
-  if (v.startsWith('eleven:')) return v.split(':', 2)[1];
-  // otherwise assume already a voice id
-  return v;
-}
-
-// ---------- Provider: Azure Cognitive Services (Neural TTS) ----------
-async function ttsAzure(text, voiceInput) {
-  const region = process.env.AZURE_TTS_REGION;
-  const key = process.env.AZURE_TTS_KEY;
-  mustHave(region, 'Missing AZURE_TTS_REGION');
-  mustHave(key, 'Missing AZURE_TTS_KEY');
-
-  const voice = voiceInput || process.env.AZURE_TTS_VOICE || 'en-IN-NeerjaNeural';
-  // Common MP3 format; you can change to higher bitrates if you like
-  const outputFmt = process.env.AZURE_TTS_OUTPUT || 'audio-24khz-48kbitrate-mono-mp3';
-
-  const ssml = buildAzureSSML(voice, text);
-
-  const t0 = Date.now();
-  const r = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': key,
-      'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': outputFmt,
-      'User-Agent': 'AtmaVani/tts',
-    },
-    body: ssml,
-  });
-  if (!r.ok) {
-    const errText = await r.text().catch(() => '');
-    throw new Error(`Azure TTS error ${r.status}: ${errText}`);
-  }
-  const buf = Buffer.from(await r.arrayBuffer());
-  return { audioBuffer: buf, ttsMs: Date.now() - t0 };
-}
-function buildAzureSSML(voiceName, text) {
-  const escaped = escapeXml(text);
-  return `<?xml version="1.0" encoding="utf-8"?>
-<speak version="1.0" xml:lang="en-IN">
-  <voice name="${voiceName}">
-    <prosody rate="0%">${escaped}</prosody>
-  </voice>
-</speak>`;
-}
-
 // ---------- Provider: Google Cloud Text-to-Speech ----------
-async function ttsGoogle(text, voiceInput) {
-  // Simpler auth path: API key (enable Text-to-Speech API in your project)
+async function ttsGoogle(text, voiceInput, lang) {
   const apiKey = process.env.GCP_TTS_API_KEY;
   mustHave(apiKey, 'Missing GCP_TTS_API_KEY');
 
-  const voiceName = voiceInput || process.env.GCP_TTS_VOICE || 'en-IN-Neural2-A';
+  // Choose default voices per language
+  const defaultVoice = lang === 'hi' ? 'hi-IN-Neural2-A' : 'en-IN-Neural2-A';
+  const voiceName = voiceInput || process.env.GCP_TTS_VOICE || defaultVoice;
+
   // If you set a specific voice name, set languageCode from it if possible:
-  const languageCode = (process.env.GCP_TTS_LANG || guessGoogleLangFromVoice(voiceName) || 'en-IN');
+  const languageCode =
+    process.env.GCP_TTS_LANG ||
+    guessGoogleLangFromVoice(voiceName) ||
+    (lang === 'hi' ? 'hi-IN' : 'en-IN');
+
+  const useSSML = String(process.env.USE_TTS_SSML || '0') === '1';
+  const payloadInput = useSSML
+    ? { ssml: buildGoogleSSML(text) }
+    : { text }; // safe because we normalize first
 
   const t0 = Date.now();
-  const r = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      input: { text }, // you can switch to { ssml: "<speak>...</speak>" } if you add SSML later
-      voice: { languageCode, name: voiceName }, // ex: en-IN-Neural2-A, hi-IN-Neural2-A
-      audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 }
-    }),
-  });
+  const r = await fetch(
+    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: payloadInput,
+        voice: { languageCode, name: voiceName },
+        audioConfig: {
+          audioEncoding: 'MP3',
+          speakingRate: 1.0
+        }
+      }),
+    }
+  );
   if (!r.ok) {
     const errText = await r.text().catch(() => '');
     throw new Error(`Google TTS error ${r.status}: ${errText}`);
@@ -208,44 +111,99 @@ async function ttsGoogle(text, voiceInput) {
   const buf = Buffer.from(data.audioContent, 'base64');
   return { audioBuffer: buf, ttsMs: Date.now() - t0 };
 }
+
 function guessGoogleLangFromVoice(name) {
   // naive parse: "hi-IN-..." -> "hi-IN"
   const m = String(name || '').match(/^([a-z]{2}-[A-Z]{2})-/);
   return m ? m[1] : '';
 }
+function buildGoogleSSML(text) {
+  // Very light SSML wrapper; text is already normalized.
+  const safe = escapeXml(text);
+  return `<speak>${safe}</speak>`;
+}
 
-// ---------- Provider: Sarvam (Indic-focused) ----------
-async function ttsSarvam(text, voiceInput) {
-  const apiKey = process.env.SARVAM_API_KEY;
-  mustHave(apiKey, 'Missing SARVAM_API_KEY');
+// ---------- Normalization layer ----------
+function normalizeForTTS(input, lang = 'en') {
+  if (!input) return '';
 
-  // Configs (depend on their catalog; set in env for your project)
-  const lang = process.env.SARVAM_TTS_LANG || 'hi-IN';      // e.g., 'en-IN', 'hi-IN', 'ta-IN', etc.
-  const speaker = voiceInput || process.env.SARVAM_TTS_VOICE || 'Abhilash'; // pick an available voice
-  const apiUrl = process.env.SARVAM_API_URL || 'https://api.sarvam.ai/text-to-speech'; // update if their base changes
+  let s = String(input);
 
-  // NOTE: Many providers limit per-request text length. Keep concise summaries under ~1200-1400 chars.
-  const t0 = Date.now();
-  const r = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
-      'Accept': 'audio/mpeg'
-    },
-    body: JSON.stringify({
-      text,
-      target_language_code: lang,  // adjust to their exact field name if needed
-      speaker,                     // voice name
-      format: 'mp3'
-    }),
-  });
-  if (!r.ok) {
-    const errText = await r.text().catch(() => '');
-    throw new Error(`Sarvam TTS error ${r.status}: ${errText}`);
+  // 0) Remove URLs (avoid reading them character-by-character)
+  s = s.replace(/\bhttps?:\/\/\S+/gi, '');
+
+  // 1) Strip Markdown-like artifacts and code fences
+  s = s
+    .replace(/[*_`#>]+/g, ' ')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1') // [text](link) -> text
+    .replace(/[-•]\s+/g, ' '); // bullets
+
+  // 2) Replace common symbols
+  if (lang === 'hi') {
+    s = s.replace(/&/g, ' और ');
+    s = s.replace(/%/g, ' प्रतिशत ');
+  } else {
+    s = s.replace(/&/g, ' and ');
+    s = s.replace(/%/g, ' percent ');
   }
-  const buf = Buffer.from(await r.arrayBuffer());
-  return { audioBuffer: buf, ttsMs: Date.now() - t0 };
+
+  // 3) Normalize punctuation spacing
+  s = s.replace(/\s+([,.!?;:])/g, '$1');
+
+  // 4) Expand common abbreviations (case-insensitive)
+  const mapEn = [
+    [/(\b)e\.g\./gi, '$1for example'],
+    [/(\b)i\.e\./gi, '$1that is'],
+    [/(\b)etc\./gi, '$1etcetera'],
+    [/(\b)vs\./gi, '$1versus'],
+    [/(\b)viz\./gi, '$1namely'],
+    [/(\b)cf\./gi, '$1compare'],
+    [/(\b)aka\b/gi, 'also known as'],
+  ];
+  const mapHi = [
+    [/(\b)e\.g\./gi, '$1उदाहरण के लिए'],
+    [/(\b)i\.e\./gi, '$1अर्थात'],
+    [/(\b)etc\./gi, '$1आदि'],
+    [/(\b)vs\./gi, '$1बनाम'],
+    [/(\b)viz\./gi, '$1अर्थात'],
+    [/(\b)cf\./gi, '$1तुलना करें'],
+    [/(\b)aka\b/gi, 'जिसे भी कहा जाता है'],
+  ];
+  for (const [re, rep] of (lang === 'hi' ? mapHi : mapEn)) s = s.replace(re, rep);
+
+  // Also catch variants missing the last dot (e.g or etc)
+  const tail = lang === 'hi'
+    ? [['e.g', 'उदाहरण के लिए'], ['i.e', 'अर्थात'], ['etc', 'आदि']]
+    : [['e.g', 'for example'], ['i.e', 'that is'], ['etc', 'etcetera']];
+  for (const [k, v] of tail) {
+    const re = new RegExp(`\\b${escapeRegExp(k)}\\b`, 'gi');
+    s = s.replace(re, v);
+  }
+
+  // 5) Emoji and special characters cleanup (keep a few explicit cases)
+  const emojiReplacements = lang === 'hi'
+    ? { '🙏': 'नमस्ते', '🙂': '', '😊': '', '❤️': '', '🤝': 'धन्यवाद' }
+    : { '🙏': 'Namaste', '🙂': '', '😊': '', '❤️': '', '🤝': 'thank you' };
+  s = s.replace(/[\u{1F300}-\u{1FAFF}]/gu, (m) => emojiReplacements[m] ?? '');
+
+  // 6) Collapse spaces, trim
+  s = s.replace(/\s{2,}/g, ' ').trim();
+
+  // 7) Safety: if string becomes empty, return a polite fallback
+  if (!s) {
+    s = lang === 'hi'
+      ? 'क्षमा कीजिए, इस संदेश में बोलने योग्य सामग्री नहीं मिली।'
+      : 'Sorry, there was nothing to speak in this message.';
+  }
+
+  return s;
+}
+
+function isDevanagari(str) {
+  return /[\u0900-\u097F]/.test(str || '');
+}
+function escapeRegExp(x) {
+  return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ---------- Helpers ----------
@@ -259,12 +217,6 @@ function escapeXml(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
-}
-function getQueryEngine(url) {
-  try {
-    const u = new URL(url, 'http://localhost');
-    return u.searchParams.get('engine');
-  } catch { return ''; }
 }
 function readJson(req) {
   return new Promise((resolve, reject) => {
