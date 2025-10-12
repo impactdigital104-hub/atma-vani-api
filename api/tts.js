@@ -35,7 +35,6 @@ module.exports = async (req, res) => {
     const body = await readJson(req);
     const rawText = ((body && body.text) || '').trim();
     const requestedVoice = (body && body.voice) ? String(body.voice) : '';
-    // Engine overrides ignored by design (Google-only)
     if (!rawText) {
       res.writeHead(400, { ...CORS, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Missing "text" in JSON body' }));
@@ -71,20 +70,16 @@ async function ttsGoogle(text, voiceInput, lang) {
   const apiKey = process.env.GCP_TTS_API_KEY;
   mustHave(apiKey, 'Missing GCP_TTS_API_KEY');
 
-  // Choose default voices per language
   const defaultVoice = lang === 'hi' ? 'hi-IN-Neural2-A' : 'en-IN-Neural2-A';
   const voiceName = voiceInput || process.env.GCP_TTS_VOICE || defaultVoice;
 
-  // If you set a specific voice name, set languageCode from it if possible:
   const languageCode =
     process.env.GCP_TTS_LANG ||
     guessGoogleLangFromVoice(voiceName) ||
     (lang === 'hi' ? 'hi-IN' : 'en-IN');
 
   const useSSML = String(process.env.USE_TTS_SSML || '0') === '1';
-  const payloadInput = useSSML
-    ? { ssml: buildGoogleSSML(text) }
-    : { text }; // safe because we normalize first
+  const payloadInput = useSSML ? { ssml: buildGoogleSSML(text) } : { text };
 
   const t0 = Date.now();
   const r = await fetch(
@@ -113,12 +108,10 @@ async function ttsGoogle(text, voiceInput, lang) {
 }
 
 function guessGoogleLangFromVoice(name) {
-  // naive parse: "hi-IN-..." -> "hi-IN"
   const m = String(name || '').match(/^([a-z]{2}-[A-Z]{2})-/);
   return m ? m[1] : '';
 }
 function buildGoogleSSML(text) {
-  // Very light SSML wrapper; text is already normalized.
   const safe = escapeXml(text);
   return `<speak>${safe}</speak>`;
 }
@@ -136,60 +129,73 @@ function normalizeForTTS(input, lang = 'en') {
   s = s
     .replace(/[*_`#>]+/g, ' ')
     .replace(/\[(.*?)\]\((.*?)\)/g, '$1') // [text](link) -> text
-    .replace(/[-•]\s+/g, ' '); // bullets
+    .replace(/(^|\s)[-•]\s+/g, '$1'); // bullets
 
-  // 2) Replace common symbols
+  // 2) Tokenize abbreviations first to prevent double-expansion later
+  s = s
+    .replace(/\b(e\.?\s*g\.?)(?=[\s,;:.)]|$)/gi, '__EG__')   // e.g., e.g
+    .replace(/\b(i\.?\s*e\.?)(?=[\s,;:.)]|$)/gi, '__IE__')   // i.e., i e
+    .replace(/\b(etc\.?)(?=[\s,;:.)]|$)/gi, '__ETC__')       // etc / etc.
+    .replace(/\b(vs\.?)(?=[\s,;:.)]|$)/gi, '__VS__')         // vs / vs.
+    .replace(/\b(viz\.?)(?=[\s,;:.)]|$)/gi, '__VIZ__')       // viz
+    .replace(/\b(cf\.?)(?=[\s,;:.)]|$)/gi, '__CF__')         // cf
+    .replace(/\baka\b/gi, '__AKA__');
+
+  // 3) Replace common symbols
   if (lang === 'hi') {
-    s = s.replace(/&/g, ' और ');
-    s = s.replace(/%/g, ' प्रतिशत ');
+    s = s.replace(/&/g, ' और ').replace(/%/g, ' प्रतिशत ');
   } else {
-    s = s.replace(/&/g, ' and ');
-    s = s.replace(/%/g, ' percent ');
+    s = s.replace(/&/g, ' and ').replace(/%/g, ' percent ');
   }
 
-  // 3) Normalize punctuation spacing
-  s = s.replace(/\s+([,.!?;:])/g, '$1');
+  // 4) Emoji handling: avoid duplicate greetings
+  const hasNamasteEn = /\bnamaste\b/i.test(s);
+  const hasNamasteHi = /नमस्ते/.test(s);
+  if (lang === 'hi') {
+    s = s.replace(/[\u{1F64F}]/gu, hasNamasteHi ? '' : ' नमस्ते '); // 🙏
+  } else {
+    s = s.replace(/[\u{1F64F}]/gu, hasNamasteEn ? '' : ' Namaste '); // 🙏
+  }
+  // Remove other emojis
+  s = s.replace(/[\u{1F300}-\u{1FAFF}]/gu, '');
 
-  // 4) Expand common abbreviations (case-insensitive)
-  const mapEn = [
-    [/(\b)e\.g\./gi, '$1for example'],
-    [/(\b)i\.e\./gi, '$1that is'],
-    [/(\b)etc\./gi, '$1etcetera'],
-    [/(\b)vs\./gi, '$1versus'],
-    [/(\b)viz\./gi, '$1namely'],
-    [/(\b)cf\./gi, '$1compare'],
-    [/(\b)aka\b/gi, 'also known as'],
-  ];
-  const mapHi = [
-    [/(\b)e\.g\./gi, '$1उदाहरण के लिए'],
-    [/(\b)i\.e\./gi, '$1अर्थात'],
-    [/(\b)etc\./gi, '$1आदि'],
-    [/(\b)vs\./gi, '$1बनाम'],
-    [/(\b)viz\./gi, '$1अर्थात'],
-    [/(\b)cf\./gi, '$1तुलना करें'],
-    [/(\b)aka\b/gi, 'जिसे भी कहा जाता है'],
-  ];
-  for (const [re, rep] of (lang === 'hi' ? mapHi : mapEn)) s = s.replace(re, rep);
-
-  // Also catch variants missing the last dot (e.g or etc)
-  const tail = lang === 'hi'
-    ? [['e.g', 'उदाहरण के लिए'], ['i.e', 'अर्थात'], ['etc', 'आदि']]
-    : [['e.g', 'for example'], ['i.e', 'that is'], ['etc', 'etcetera']];
-  for (const [k, v] of tail) {
-    const re = new RegExp(`\\b${escapeRegExp(k)}\\b`, 'gi');
-    s = s.replace(re, v);
+  // 5) Expand tokens exactly once (language-specific)
+  if (lang === 'hi') {
+    s = s
+      .replace(/__EG__/g, 'उदाहरण के लिए')
+      .replace(/__IE__/g, 'अर्थात')
+      .replace(/__ETC__/g, 'आदि')
+      .replace(/__VS__/g, 'बनाम')
+      .replace(/__VIZ__/g, 'अर्थात')
+      .replace(/__CF__/g, 'तुलना करें')
+      .replace(/__AKA__/g, 'जिसे भी कहा जाता है');
+  } else {
+    s = s
+      .replace(/__EG__/g, 'for example')
+      .replace(/__IE__/g, 'that is')
+      .replace(/__ETC__/g, 'etcetera')
+      .replace(/__VS__/g, 'versus')
+      .replace(/__VIZ__/g, 'namely')
+      .replace(/__CF__/g, 'compare')
+      .replace(/__AKA__/g, 'also known as');
   }
 
-  // 5) Emoji and special characters cleanup (keep a few explicit cases)
-  const emojiReplacements = lang === 'hi'
-    ? { '🙏': 'नमस्ते', '🙂': '', '😊': '', '❤️': '', '🤝': 'धन्यवाद' }
-    : { '🙏': 'Namaste', '🙂': '', '😊': '', '❤️': '', '🤝': 'thank you' };
-  s = s.replace(/[\u{1F300}-\u{1FAFF}]/gu, (m) => emojiReplacements[m] ?? '');
+  // 6) Collapse duplicate greetings only (to avoid harming mantra recitations)
+  //   Examples handled: "Namaste, Namaste", "Namaste Namaste", "नमस्ते, नमस्ते"
+  s = s
+    .replace(/\b(Namaste)(?:[,\s]+)\1\b/gi, 'Namaste')
+    .replace(/(नमस्ते)(?:[,\s]+)\1/g, 'नमस्ते');
 
-  // 6) Collapse spaces, trim
-  s = s.replace(/\s{2,}/g, ' ').trim();
+  // 7) Normalize punctuation spacing and trim extra commas
+  s = s
+    .replace(/\s+([,.!?;:])/g, '$1')
+    .replace(/([,.!?;:]){2,}/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[,;:\s]+/, '')
+    .replace(/[\s,;:]+$/, '')
+    .trim();
 
-  // 7) Safety: if string becomes empty, return a polite fallback
+  // 8) Safety: if string becomes empty, return a polite fallback
   if (!s) {
     s = lang === 'hi'
       ? 'क्षमा कीजिए, इस संदेश में बोलने योग्य सामग्री नहीं मिली।'
@@ -201,9 +207,6 @@ function normalizeForTTS(input, lang = 'en') {
 
 function isDevanagari(str) {
   return /[\u0900-\u097F]/.test(str || '');
-}
-function escapeRegExp(x) {
-  return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ---------- Helpers ----------
