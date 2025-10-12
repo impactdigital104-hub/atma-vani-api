@@ -1,9 +1,12 @@
-// api/chat.js — Atma Vani v1.1
-// - Uses OpenAI (gpt-4o-mini) for all answers
-// - Strict Hindu-spirituality scope (out-of-scope -> polite refusal in EN/HI)
-// - Restores your full Atma Vani SYSTEM_PROMPT (persona + answer patterns)
-// - Adds a quick self-check pass (OK / REFUSE / REVISE)
-// - Logs to Firestore and updates theme with /api/classify-theme
+// api/chat.js — Atma Vani v1.1 (robust)
+// - Hinduism-only scope (refuse out-of-scope, EN/HI)
+// - Uses OpenAI (gpt-4o-mini) with automatic fallback:
+//     1) Responses API  -> if fails, then
+//     2) Chat Completions API
+// - Preserves your full SYSTEM_PROMPT
+// - Adds a self-check pass (OK / REFUSE / REVISE)
+// - Logs to Firestore; updates theme via /api/classify-theme
+// - CORS: * (MVP)
 
 const admin = require("firebase-admin");
 
@@ -60,12 +63,9 @@ function refusalMessage(userText) {
 }
 
 // ---- Your full SYSTEM_PROMPT (restored) ----
-// We prepend a tiny header to force plain text and scope discipline;
-// then include your original content verbatim.
 const SYSTEM_HEADER = [
   "You are Atma Vani. Return PLAIN TEXT only (no Markdown).",
-  "Answer ONLY if the request is within Hindu spirituality scope;",
-  "otherwise give a short, kind refusal guiding the user back to scope."
+  "Answer ONLY if the request is within Hindu spirituality scope; otherwise give a short, kind refusal guiding the user back to scope."
 ].join(" ");
 
 const YOUR_SYSTEM_PROMPT = `
@@ -110,7 +110,7 @@ You are **Atma Vani**, a Hindu Spiritual Guide. Stay strictly within Hindu spiri
 ## Non-negotiable canon cues (do not contradict)
 - **Ancestor rites:** home practice centers on **til-tarpana** (water + **black sesame**), **facing south**; **darbha** if available; **Mahamṛtyuñjaya** / “**Om Pitr̥bhyo Namaḥ**”; **naivedya** + **annadān**. Photo usage varies by paramparā—mark as custom-dependent.
 - **Rudraksha:** **Ek-mukhi** = emblem of Shiva (rare); **5-mukhi** widely recommended for daily sattva/japa; **6-mukhi** often suggested for Mars-type irritability/anger.
-- **Śakti Pīṭhas:** classical lists vary (51/52/108). **Vaiṣṇo Devī is revered but not typically counted** among the canonical Pīṭhas. Mention Śakti–Bhairava pairing if relevant.
+- **Śakti Pīṭhas:** classical lists vary (51/52/108). **Vaiṣṇो Devī is revered but not typically counted** among the canonical Pīṭhas. Mention Śakti–Bhairava pairing if relevant.
 - **Jyotirliṅgas:** prefer **region clusters**; call out **Kedarnath** altitude/seasonal access.
 
 ## Conversation design (MANDATORY)
@@ -125,25 +125,7 @@ Before finalizing your answer, ensure ALL are true:
 - [ ] No links unless asked; no prices; no invented specifics.
 - [ ] Ends with **two decision-oriented follow-ups** tailored to the user.
 
-## Exemplar policy
-Exemplars are for **tone/shape only**. Do **not** constrain content or invent parallels; if the user’s intent differs, ignore exemplars and follow the Answer Pattern Selector + canon cues.
-
-## Exemplars (style only; do not echo verbatim)
-
-**Exemplar — Which Rudraksha for anger?**
-For steady calm in daily life, **5-mukhi** is a safe, traditional choice supporting sattva and patient japa. If your anger feels **sharp/impulsive (Mars-type)**, many seekers also use **6-mukhi**, associated with Kartikeya, to moderate reactivity and improve self-control. *Choice rule:* pick **5-mukhi** for general calm/japa; add **6-mukhi** if spikes continue or feel martial. *Checklist:* authenticity, comfortable size, simple energizing (Monday/Thursday; “Om Namah Śivāya”), remove during bath/sleep.
-• **Would you prefer a discreet pendant or a full mala for japa?**
-• **Do your anger episodes feel like restlessness (5-mukhi) or sharp outbursts (consider adding 6-mukhi)?**
-
-**Exemplar — Home til-tarpana for ancestors (short)**
-Sit **facing south**; bowl with **water + black sesame** (add **darbha** if available). Light a lamp; remember ancestors by name/gotra. Offer water slowly with **“Om Pitr̥bhyo Namaḥ”** or **Mahamṛtyuñjaya** (11/108×); offer simple **sāttvic naivedya**; share prasād; perform small **annadān**. Timing: **tithi/Amāvasyā/Pitru Paksha** (time of day varies by region—confirm locally).
-• **Shall we choose a nearby tithi/Amāvasyā and set a 10-minute home rite for you?**
-• **Do you want a concise mantra set, or guidance to speak with a local priest for śrāddha/pinda-dān?**
-
-**Micro-exemplar — Festival observance (Navarātri, pattern)**
-One-breath significance; simple home observance (lamp, śloka, sattvic food); one seva idea; note regional variation.
-• **Would you like a 20-minute evening routine for all nine nights, or a simpler plan for day 1 & 9?**
-• **Do you prefer quiet home worship, or visiting a nearby temple during āratī?**
+## Exemplars…
 `;
 
 // ---- Self-check prompt ----
@@ -166,37 +148,71 @@ function selfCheckPrompt(user, draft) {
   ].join("\n");
 }
 
-// ---- OpenAI calls ----
-async function openAI(inputArray) {
+// ---- OpenAI: Responses API, with fallback to Chat Completions ----
+async function callOpenAIResponses(inputArray) {
   const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
+    headers: { "Authorization": `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: "gpt-4o-mini", input: inputArray }),
   });
-  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${await r.text().catch(()=> "")}`);
+  if (!r.ok) throw new Error(`Responses ${r.status}: ${await r.text().catch(()=> "")}`);
   const data = await r.json();
-  return data?.output_text || data?.output?.[0]?.content?.[0]?.text || "";
+  const out = data?.output_text || data?.output?.[0]?.content?.[0]?.text || "";
+  if (!out.trim()) throw new Error("Responses returned empty output.");
+  return out;
+}
+async function callOpenAIChatCompletions(messages) {
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "gpt-4o-mini", messages }),
+  });
+  if (!r.ok) throw new Error(`ChatCompletions ${r.status}: ${await r.text().catch(()=> "")}`);
+  const data = await r.json();
+  const out = data?.choices?.[0]?.message?.content || "";
+  if (!out.trim()) throw new Error("ChatCompletions returned empty output.");
+  return out;
 }
 async function askModel(userMessage) {
-  return openAI([
-    { role: "system", content: `${SYSTEM_HEADER}\n\n${YOUR_SYSTEM_PROMPT}` },
-    { role: "user",   content: userMessage }
-  ]);
+  // try Responses first, then fallback
+  try {
+    return await callOpenAIResponses([
+      { role: "system", content: `${SYSTEM_HEADER}\n\n${YOUR_SYSTEM_PROMPT}` },
+      { role: "user",   content: userMessage }
+    ]);
+  } catch (e1) {
+    console.warn("[chat] Responses API failed, falling back:", e1.message);
+    return await callOpenAIChatCompletions([
+      { role: "system", content: `${SYSTEM_HEADER}\n\n${YOUR_SYSTEM_PROMPT}` },
+      { role: "user",   content: userMessage }
+    ]);
+  }
 }
 async function selfCheck(userMessage, draftAnswer) {
-  const text = await openAI([
-    { role: "system", content: "You are a careful, concise verifier." },
-    { role: "user",   content: selfCheckPrompt(userMessage, draftAnswer) }
-  ]);
-  const firstLine = text.split("\n")[0].trim().toUpperCase();
-  const rest = text.split("\n").slice(2).join("\n").trim();
-  return { verdict: firstLine, revised: rest };
+  // try Responses, then fallback
+  try {
+    return await (async () => {
+      const text = await callOpenAIResponses([
+        { role: "system", content: "You are a careful, concise verifier." },
+        { role: "user",   content: selfCheckPrompt(userMessage, draftAnswer) }
+      ]);
+      const firstLine = text.split("\n")[0].trim().toUpperCase();
+      const rest = text.split("\n").slice(2).join("\n").trim();
+      return { verdict: firstLine, revised: rest };
+    })();
+  } catch (e1) {
+    console.warn("[chat] Verifier Responses failed, falling back:", e1.message);
+    const text = await callOpenAIChatCompletions([
+      { role: "system", content: "You are a careful, concise verifier." },
+      { role: "user",   content: selfCheckPrompt(userMessage, draftAnswer) }
+    ]);
+    const firstLine = text.split("\n")[0].trim().toUpperCase();
+    const rest = text.split("\n").slice(2).join("\n").trim();
+    return { verdict: firstLine, revised: rest };
+  }
 }
 
-// ---- Classifier (existing endpoint) ----
+// ---- Theme classifier (existing endpoint) ----
 async function classifyTheme(host, text) {
   try {
     const r = await fetch(`https://${host}/api/classify-theme`, {
@@ -216,7 +232,10 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") { res.statusCode = 405; return res.end("Method Not Allowed"); }
 
   try {
-    const { message } = JSON.parse(req.body || "{}");
+    // Vercel Node APIs often deliver req.body as a string (we handle both)
+    const bodyStr = typeof req.body === "string" ? req.body : (req.body ? JSON.stringify(req.body) : "{}");
+    const { message } = JSON.parse(bodyStr || "{}");
+
     if (!message || typeof message !== "string") {
       res.statusCode = 400;
       return res.end(JSON.stringify({ error: "Missing 'message'." }));
@@ -262,7 +281,9 @@ module.exports = async (req, res) => {
       } else if (check.verdict === "REVISE" && check.revised) {
         finalReply = check.revised;
       }
-    } catch { /* if verifier fails, keep draft */ }
+    } catch (e) {
+      console.warn("[chat] self-check failed, using draft:", e.message);
+    }
 
     // Log to Firestore
     let docId = null;
