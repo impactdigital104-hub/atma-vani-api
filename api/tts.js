@@ -2,22 +2,23 @@
 // Purpose: Text-to-Speech (Google only) with pre-normalization and FIXED Indian male voices.
 // Returns MP3 audio.
 //
-// What’s enforced here:
+// Enforced here:
 //   • Google Cloud Text-to-Speech only
 //   • Male voice fixed per language: EN → en-IN-Neural2-D, HI → hi-IN-Neural2-D
 //   • We IGNORE any "voice" passed from the client to keep it consistent
-//   • Auto language detect (Devanagari => Hindi; else English)
+//   • Auto language detect (Devanagari => Hindi; else English) for normalization only
 //   • Normalizes text to avoid awkward speech (🙏/e.g./i.e./etc/&/Markdown/URLs)
-//   • Optional SSML: set USE_TTS_SSML=1 if you want SSML input (kept OFF by default)
+//   • Optional SSML: set USE_TTS_SSML=1 (kept OFF by default)
 //
 // Required env:
 //   - GCP_TTS_API_KEY
 //
-// Optional env (advanced):
+// Optional env (tuning):
 //   - GCP_TTS_VOICE_EN_MALE  (default en-IN-Neural2-D)
 //   - GCP_TTS_VOICE_HI_MALE  (default hi-IN-Neural2-D)
-//   - GCP_TTS_LANG           (e.g., en-IN or hi-IN) – usually leave unset
-//   - USE_TTS_SSML           ("1" to enable)
+//   - USE_TTS_SSML           ("1" to enable SSML input)
+//   - TTS_SPEAKING_RATE      (e.g., "0.90"; defaults to 0.90)
+//   - TTS_PITCH              (e.g., "-2.0"; defaults to 0.0)
 //
 // CORS is open for MVP.
 
@@ -47,14 +48,14 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ error: 'Missing "text" in JSON body' }));
     }
 
-    // Detect language from content (Devanagari -> hi, else en)
-    const lang = isDevanagari(rawText) ? 'hi' : 'en';
+    // Detect language from content (Devanagari -> hi, else en) — used only for normalization choices
+    const normLang = isDevanagari(rawText) ? 'hi' : 'en';
 
     // Pre-normalize text so TTS doesn’t read symbols literally
-    const text = normalizeForTTS(rawText, lang);
+    const text = normalizeForTTS(rawText, normLang);
 
-    // Google TTS
-    const { audioBuffer, ttsMs } = await ttsGoogle(text, lang);
+    // Google TTS (fixed male voices)
+    const { audioBuffer, ttsMs, voiceUsed, langUsed, rateUsed } = await ttsGoogle(text, normLang);
 
     res.writeHead(200, {
       ...CORS,
@@ -62,7 +63,9 @@ module.exports = async (req, res) => {
       'Cache-Control': 'no-store',
       'X-TTS-Provider': 'google',
       'X-TTS-MS': String(ttsMs || 0),
-      'X-TTS-Lang': lang,
+      'X-TTS-Voice': voiceUsed,
+      'X-TTS-Lang': langUsed,
+      'X-TTS-Rate': String(rateUsed),
     });
     return res.end(audioBuffer);
 
@@ -74,7 +77,7 @@ module.exports = async (req, res) => {
 };
 
 // ---------- Provider: Google Cloud Text-to-Speech (male voices, fixed) ----------
-async function ttsGoogle(text, lang) {
+async function ttsGoogle(text, normLang) {
   const apiKey = process.env.GCP_TTS_API_KEY;
   mustHave(apiKey, 'Missing GCP_TTS_API_KEY');
 
@@ -82,13 +85,15 @@ async function ttsGoogle(text, lang) {
   const EN_MALE = process.env.GCP_TTS_VOICE_EN_MALE || 'en-IN-Neural2-D';
   const HI_MALE = process.env.GCP_TTS_VOICE_HI_MALE || 'hi-IN-Neural2-D';
 
-  const voiceName = lang === 'hi' ? HI_MALE : EN_MALE;
+  // Choose by normalization-language (only to pick voice; synthesis lang derives from voice)
+  const voiceName = normLang === 'hi' ? HI_MALE : EN_MALE;
 
-  // Prefer deriving language from the selected voice, unless user forcibly sets GCP_TTS_LANG
-  const languageCode =
-    process.env.GCP_TTS_LANG ||
-    guessGoogleLangFromVoice(voiceName) ||
-    (lang === 'hi' ? 'hi-IN' : 'en-IN');
+  // Derive languageCode strictly from the voiceName to avoid mismatches/fallbacks
+  const langFromVoice = guessGoogleLangFromVoice(voiceName) || (normLang === 'hi' ? 'hi-IN' : 'en-IN');
+
+  // Speaking rate & pitch (with sane clamps)
+  const rate = clamp(parseFloat(process.env.TTS_SPEAKING_RATE || '0.90'), 0.5, 1.3);
+  const pitch = clamp(parseFloat(process.env.TTS_PITCH || '0.0'), -10, 10);
 
   const useSSML = String(process.env.USE_TTS_SSML || '0') === '1';
   const payloadInput = useSSML ? { ssml: buildGoogleSSML(text) } : { text };
@@ -101,10 +106,11 @@ async function ttsGoogle(text, lang) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         input: payloadInput,
-        voice: { languageCode, name: voiceName },
+        voice: { languageCode: langFromVoice, name: voiceName },
         audioConfig: {
           audioEncoding: 'MP3',
-          speakingRate: 1.0
+          speakingRate: rate,
+          pitch: pitch
         }
       }),
     }
@@ -116,7 +122,13 @@ async function ttsGoogle(text, lang) {
   const data = await r.json();
   if (!data || !data.audioContent) throw new Error('Google TTS returned no audioContent');
   const buf = Buffer.from(data.audioContent, 'base64');
-  return { audioBuffer: buf, ttsMs: Date.now() - t0 };
+  return {
+    audioBuffer: buf,
+    ttsMs: Date.now() - t0,
+    voiceUsed: voiceName,
+    langUsed: langFromVoice,
+    rateUsed: rate
+  };
 }
 
 function guessGoogleLangFromVoice(name) {
@@ -234,6 +246,12 @@ function escapeXml(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+function clamp(x, lo, hi) {
+  if (!isFinite(x)) return lo;
+  if (x < lo) return lo;
+  if (x > hi) return hi;
+  return x;
 }
 function readJson(req) {
   return new Promise((resolve, reject) => {
