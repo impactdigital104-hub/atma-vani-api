@@ -1,5 +1,18 @@
-// Hybrid classifier: fast keyword rules first (deterministic), then model fallback.
-// Returns { theme } for GET ?text=... or POST { text }.
+// File: api/classify-theme.js
+// Purpose: Classify a user message into Hinduism vs Other with a confidence score,
+// while preserving the existing theme output.
+//
+// Backward compatible output (always):
+//   { theme: "<one of THEMES>", label: "Hinduism" | "Other", confidence: 0..1 }
+//
+// Notes:
+// - Your existing keyword RULES are preserved.
+// - If a keyword rule hits, we return theme=<matched theme>, label="Hinduism", confidence=0.90.
+// - If no rule hits, we ask the model for JSON: {label, confidence, theme}.
+//   * If the model only returns {theme}, we map: theme==="Other" -> {label:"Other",0},
+//     else -> {label:"Hinduism",0.85}.
+// - CORS and GET/POST behavior unchanged.
+// - Temperature is 0 for determinism; low max_output_tokens; no links, no extra text.
 
 const THEMES = [
   "Deities",
@@ -14,7 +27,7 @@ const THEMES = [
   "Other"
 ];
 
-// --- simple keyword buckets (add/change anytime) ---
+// --- simple keyword buckets (unchanged) ---
 const RULES = [
   // Temples
   { theme: "Temples", kws: [
@@ -73,23 +86,38 @@ const RULES = [
   ]},
 ];
 
-// normalize and match
+// normalize and match (unchanged logic, new return shape)
 function ruleClassify(text) {
   const t = (text || "").toLowerCase();
   for (const { theme, kws } of RULES) {
     for (const kw of kws) {
-      if (t.includes(kw)) return theme;
+      if (t.includes(kw)) {
+        // Rule hit: treat as Hinduism with high confidence (0.90)
+        return { theme, label: mapThemeToLabel(theme), confidence: 0.90 };
+      }
     }
   }
   return null;
 }
 
+// Model fallback: now asks for {label, confidence, theme}, but still tolerates old-style {theme}
 async function modelFallback(text) {
-  // Very small prompt, forced JSON. Used only when rules fail.
+  // Keep this compact and deterministic
   const prompt = `
-Return ONLY {"theme":"..."} choosing ONE from:
-${THEMES.join(", ")}.
-User text: """${text.trim()}"""
+Return ONLY compact JSON (no commentary) describing the user's message domain.
+
+Keys:
+- "label": "Hinduism" or "Other"
+- "confidence": a number 0..1 for your certainty
+- "theme": pick exactly one from: ${THEMES.join(", ")}
+
+Rules:
+- If the message is within Hindu spirituality (deities, puja/rituals/vrat, festivals, temples, scriptures/philosophy, jyotish/astrology, pilgrimages/yatra, devotional practices, rudraksha, life-challenges answered via dharma), set label to "Hinduism".
+- Otherwise set label to "Other".
+- Be conservative: use 0.70–0.95 for typical cases; 0.50 if uncertain; 0.98+ only if it is crystal-clear.
+
+User text:
+"""${String(text || "").trim()}"""
 `.trim();
 
   try {
@@ -103,28 +131,52 @@ User text: """${text.trim()}"""
         model: "gpt-4o-mini",
         input: [{ role: "user", content: prompt }],
         temperature: 0,
-        max_output_tokens: 20,
+        max_output_tokens: 60,
         text: { format: "json" }
       })
     });
 
-    if (!r.ok) return "Other";
+    if (!r.ok) {
+      return { theme: "Other", label: "Other", confidence: 0.0 };
+    }
     const j = await r.json();
     const raw = j.output_text || "";
+    // Try strict JSON first
     try {
       const obj = JSON.parse(raw);
-      const t = obj && typeof obj.theme === "string" ? obj.theme : "Other";
-      return THEMES.includes(t) ? t : "Other";
+      const theme = coerceTheme(obj.theme);
+      const label = obj.label === "Hinduism" ? "Hinduism" : "Other";
+      const confidence = clamp01(Number(obj.confidence));
+      return { theme, label, confidence };
     } catch {
-      return "Other";
+      // Backward tolerance: if only {theme} came back
+      try {
+        const obj2 = JSON.parse(raw);
+        const theme = coerceTheme(obj2.theme);
+        const label = mapThemeToLabel(theme);
+        const confidence = theme === "Other" ? 0.0 : 0.85;
+        return { theme, label, confidence };
+      } catch {
+        return { theme: "Other", label: "Other", confidence: 0.0 };
+      }
     }
   } catch {
-    return "Other";
+    return { theme: "Other", label: "Other", confidence: 0.0 };
   }
 }
 
+function mapThemeToLabel(theme) {
+  // Everything except literal "Other" is still Hindu domain for our purposes
+  return theme === "Other" ? "Other" : "Hinduism";
+}
+
+function coerceTheme(t) {
+  const s = String(t || "");
+  return THEMES.includes(s) ? s : "Other";
+}
+
 module.exports = async (req, res) => {
-  // CORS
+  // CORS (unchanged)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -144,14 +196,36 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Missing "text" (string).' });
     }
 
-    // 1) Try rules
+    // 1) Try rules (fast path, unchanged keywords)
     const rule = ruleClassify(text);
-    if (rule) return res.status(200).json({ theme: rule });
+    if (rule) {
+      return res.status(200).json({
+        theme: rule.theme,
+        label: rule.label,
+        confidence: round2(rule.confidence)
+      });
+    }
 
-    // 2) Fallback to model
-    const theme = await modelFallback(text);
-    return res.status(200).json({ theme });
+    // 2) Fallback to model (now returns label+confidence; still backward-compatible)
+    const out = await modelFallback(text);
+    return res.status(200).json({
+      theme: out.theme,
+      label: out.label,
+      confidence: round2(out.confidence)
+    });
+
   } catch {
-    return res.status(200).json({ theme: "Other" });
+    return res.status(200).json({ theme: "Other", label: "Other", confidence: 0.0 });
   }
 };
+
+// -------------- utils --------------
+function clamp01(x) {
+  if (!isFinite(x)) return 0;
+  if (x < 0) return 0;
+  if (x > 1) return 1;
+  return x;
+}
+function round2(x) {
+  return Math.round(x * 100) / 100;
+}
