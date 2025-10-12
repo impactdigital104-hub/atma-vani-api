@@ -1,18 +1,25 @@
 // File: api/tts.js
-// Purpose: Text-to-Speech (Google only) with pre-normalization to avoid awkward speech.
+// Purpose: Text-to-Speech (Google only) with pre-normalization and FIXED Indian male voices.
 // Returns MP3 audio.
 //
-// Frontend usage (unchanged):
-//   POST /api/tts  { "text": "Hello", "voice": "optional" }  -> audio/mpeg
+// What’s enforced here:
+//   • Google Cloud Text-to-Speech only
+//   • Male voice fixed per language: EN → en-IN-Neural2-D, HI → hi-IN-Neural2-D
+//   • We IGNORE any "voice" passed from the client to keep it consistent
+//   • Auto language detect (Devanagari => Hindi; else English)
+//   • Normalizes text to avoid awkward speech (🙏/e.g./i.e./etc/&/Markdown/URLs)
+//   • Optional SSML: set USE_TTS_SSML=1 if you want SSML input (kept OFF by default)
 //
-// Env required:
-//   GCP_TTS_API_KEY
-// Optional env:
-//   GCP_TTS_VOICE (default en-IN-Neural2-A / hi-IN-Neural2-A auto-chosen)
-//   GCP_TTS_LANG  (e.g., en-IN or hi-IN). If unset, we infer from voice name.
-//   USE_TTS_SSML=1 to send SSML instead of plain text
+// Required env:
+//   - GCP_TTS_API_KEY
 //
-// CORS is open for MVP. Tighten in prod.
+// Optional env (advanced):
+//   - GCP_TTS_VOICE_EN_MALE  (default en-IN-Neural2-D)
+//   - GCP_TTS_VOICE_HI_MALE  (default hi-IN-Neural2-D)
+//   - GCP_TTS_LANG           (e.g., en-IN or hi-IN) – usually leave unset
+//   - USE_TTS_SSML           ("1" to enable)
+//
+// CORS is open for MVP.
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,7 +41,7 @@ module.exports = async (req, res) => {
   try {
     const body = await readJson(req);
     const rawText = ((body && body.text) || '').trim();
-    const requestedVoice = (body && body.voice) ? String(body.voice) : '';
+    // Intentionally ignore any per-request voice to keep it male and consistent
     if (!rawText) {
       res.writeHead(400, { ...CORS, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Missing "text" in JSON body' }));
@@ -47,7 +54,7 @@ module.exports = async (req, res) => {
     const text = normalizeForTTS(rawText, lang);
 
     // Google TTS
-    const { audioBuffer, ttsMs } = await ttsGoogle(text, requestedVoice, lang);
+    const { audioBuffer, ttsMs } = await ttsGoogle(text, lang);
 
     res.writeHead(200, {
       ...CORS,
@@ -55,6 +62,7 @@ module.exports = async (req, res) => {
       'Cache-Control': 'no-store',
       'X-TTS-Provider': 'google',
       'X-TTS-MS': String(ttsMs || 0),
+      'X-TTS-Lang': lang,
     });
     return res.end(audioBuffer);
 
@@ -65,14 +73,18 @@ module.exports = async (req, res) => {
   }
 };
 
-// ---------- Provider: Google Cloud Text-to-Speech ----------
-async function ttsGoogle(text, voiceInput, lang) {
+// ---------- Provider: Google Cloud Text-to-Speech (male voices, fixed) ----------
+async function ttsGoogle(text, lang) {
   const apiKey = process.env.GCP_TTS_API_KEY;
   mustHave(apiKey, 'Missing GCP_TTS_API_KEY');
 
-  const defaultVoice = lang === 'hi' ? 'hi-IN-Neural2-A' : 'en-IN-Neural2-A';
-  const voiceName = voiceInput || process.env.GCP_TTS_VOICE || defaultVoice;
+  // Fixed Indian male voices (can be overridden via env if needed)
+  const EN_MALE = process.env.GCP_TTS_VOICE_EN_MALE || 'en-IN-Neural2-D';
+  const HI_MALE = process.env.GCP_TTS_VOICE_HI_MALE || 'hi-IN-Neural2-D';
 
+  const voiceName = lang === 'hi' ? HI_MALE : EN_MALE;
+
+  // Prefer deriving language from the selected voice, unless user forcibly sets GCP_TTS_LANG
   const languageCode =
     process.env.GCP_TTS_LANG ||
     guessGoogleLangFromVoice(voiceName) ||
@@ -108,10 +120,12 @@ async function ttsGoogle(text, voiceInput, lang) {
 }
 
 function guessGoogleLangFromVoice(name) {
+  // naive parse: "hi-IN-..." -> "hi-IN"
   const m = String(name || '').match(/^([a-z]{2}-[A-Z]{2})-/);
   return m ? m[1] : '';
 }
 function buildGoogleSSML(text) {
+  // Very light SSML wrapper; text is already normalized.
   const safe = escapeXml(text);
   return `<speak>${safe}</speak>`;
 }
@@ -133,7 +147,7 @@ function normalizeForTTS(input, lang = 'en') {
 
   // 2) Tokenize abbreviations first to prevent double-expansion later
   s = s
-    .replace(/\b(e\.?\s*g\.?)(?=[\s,;:.)]|$)/gi, '__EG__')   // e.g., e.g
+    .replace(/\b(e\.?\s*g\.?)(?=[\s,;:.)]|$)/gi, '__EG__')   // e.g., e g
     .replace(/\b(i\.?\s*e\.?)(?=[\s,;:.)]|$)/gi, '__IE__')   // i.e., i e
     .replace(/\b(etc\.?)(?=[\s,;:.)]|$)/gi, '__ETC__')       // etc / etc.
     .replace(/\b(vs\.?)(?=[\s,;:.)]|$)/gi, '__VS__')         // vs / vs.
