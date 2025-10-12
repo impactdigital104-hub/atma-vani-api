@@ -1,26 +1,22 @@
 // File: api/tts.js
-// Purpose: Text-to-Speech (Google only) with pre-normalization and FIXED Indian male voices.
+// Purpose: Text-to-Speech (Google only) with pre-normalization and FIXED Indian MALE voices.
 // Returns MP3 audio.
 //
-// Enforced here:
-//   • Google Cloud Text-to-Speech only
-//   • Male voice fixed per language: EN → en-IN-Neural2-D, HI → hi-IN-Neural2-D
-//   • We IGNORE any "voice" passed from the client to keep it consistent
-//   • Auto language detect (Devanagari => Hindi; else English) for normalization only
-//   • Normalizes text to avoid awkward speech (🙏/e.g./i.e./etc/&/Markdown/URLs)
-//   • Optional SSML: set USE_TTS_SSML=1 (kept OFF by default)
+// Male voices (per your project's available list):
+//   EN → en-IN-Neural2-B (male)
+//   HI → hi-IN-Neural2-B (male)
 //
 // Required env:
 //   - GCP_TTS_API_KEY
 //
-// Optional env (tuning):
-//   - GCP_TTS_VOICE_EN_MALE  (default en-IN-Neural2-D)
-//   - GCP_TTS_VOICE_HI_MALE  (default hi-IN-Neural2-D)
+// Optional env (override if you ever want a different male voice):
+//   - GCP_TTS_VOICE_EN_MALE  (default en-IN-Neural2-B)
+//   - GCP_TTS_VOICE_HI_MALE  (default hi-IN-Neural2-B)
 //   - USE_TTS_SSML           ("1" to enable SSML input)
 //   - TTS_SPEAKING_RATE      (e.g., "0.90"; defaults to 0.90)
 //   - TTS_PITCH              (e.g., "-2.0"; defaults to 0.0)
 //
-// CORS is open for MVP.
+// CORS open for MVP.
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -42,16 +38,16 @@ module.exports = async (req, res) => {
   try {
     const body = await readJson(req);
     const rawText = ((body && body.text) || '').trim();
-    // Intentionally ignore any per-request voice to keep it male and consistent
+    // We intentionally ignore any per-request "voice" to keep it male and consistent
     if (!rawText) {
       res.writeHead(400, { ...CORS, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Missing "text" in JSON body' }));
     }
 
-    // Detect language from content (Devanagari -> hi, else en) — used only for normalization choices
+    // Detect language (for normalization choices only)
     const normLang = isDevanagari(rawText) ? 'hi' : 'en';
 
-    // Pre-normalize text so TTS doesn’t read symbols literally
+    // Normalize text to avoid awkward speech
     const text = normalizeForTTS(rawText, normLang);
 
     // Google TTS (fixed male voices)
@@ -76,22 +72,22 @@ module.exports = async (req, res) => {
   }
 };
 
-// ---------- Provider: Google Cloud Text-to-Speech (male voices, fixed) ----------
+// ---------- Google Cloud Text-to-Speech (male voices, fixed) ----------
 async function ttsGoogle(text, normLang) {
   const apiKey = process.env.GCP_TTS_API_KEY;
   mustHave(apiKey, 'Missing GCP_TTS_API_KEY');
 
-  // Fixed Indian male voices (can be overridden via env if needed)
-  const EN_MALE = process.env.GCP_TTS_VOICE_EN_MALE || 'en-IN-Neural2-D';
-  const HI_MALE = process.env.GCP_TTS_VOICE_HI_MALE || 'hi-IN-Neural2-D';
+  // Use the MALE voices your project actually has (seen in /api/tts-voices)
+  const EN_MALE = process.env.GCP_TTS_VOICE_EN_MALE || 'en-IN-Neural2-B';
+  const HI_MALE = process.env.GCP_TTS_VOICE_HI_MALE || 'hi-IN-Neural2-B';
 
-  // Choose by normalization-language (only to pick voice; synthesis lang derives from voice)
+  // Choose by normalization-language (only for picking voice; synthesis language is derived from the voice name)
   const voiceName = normLang === 'hi' ? HI_MALE : EN_MALE;
 
   // Derive languageCode strictly from the voiceName to avoid mismatches/fallbacks
   const langFromVoice = guessGoogleLangFromVoice(voiceName) || (normLang === 'hi' ? 'hi-IN' : 'en-IN');
 
-  // Speaking rate & pitch (with sane clamps)
+  // Speaking rate & pitch (tunable)
   const rate = clamp(parseFloat(process.env.TTS_SPEAKING_RATE || '0.90'), 0.5, 1.3);
   const pitch = clamp(parseFloat(process.env.TTS_PITCH || '0.0'), -10, 10);
 
@@ -106,7 +102,7 @@ async function ttsGoogle(text, normLang) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         input: payloadInput,
-        voice: { languageCode: langFromVoice, name: voiceName },
+        voice: { languageCode: langFromVoice, name: voiceName, ssmlGender: 'MALE' },
         audioConfig: {
           audioEncoding: 'MP3',
           speakingRate: rate,
@@ -132,39 +128,36 @@ async function ttsGoogle(text, normLang) {
 }
 
 function guessGoogleLangFromVoice(name) {
-  // naive parse: "hi-IN-..." -> "hi-IN"
   const m = String(name || '').match(/^([a-z]{2}-[A-Z]{2})-/);
   return m ? m[1] : '';
 }
 function buildGoogleSSML(text) {
-  // Very light SSML wrapper; text is already normalized.
   const safe = escapeXml(text);
   return `<speak>${safe}</speak>`;
 }
 
-// ---------- Normalization layer ----------
+// ---------- Normalization layer (unchanged) ----------
 function normalizeForTTS(input, lang = 'en') {
   if (!input) return '';
-
   let s = String(input);
 
-  // 0) Remove URLs (avoid reading them character-by-character)
+  // 0) Remove URLs
   s = s.replace(/\bhttps?:\/\/\S+/gi, '');
 
   // 1) Strip Markdown-like artifacts and code fences
   s = s
     .replace(/[*_`#>]+/g, ' ')
-    .replace(/\[(.*?)\]\((.*?)\)/g, '$1') // [text](link) -> text
-    .replace(/(^|\s)[-•]\s+/g, '$1'); // bullets
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
+    .replace(/(^|\s)[-•]\s+/g, '$1');
 
-  // 2) Tokenize abbreviations first to prevent double-expansion later
+  // 2) Tokenize abbreviations first
   s = s
-    .replace(/\b(e\.?\s*g\.?)(?=[\s,;:.)]|$)/gi, '__EG__')   // e.g., e g
-    .replace(/\b(i\.?\s*e\.?)(?=[\s,;:.)]|$)/gi, '__IE__')   // i.e., i e
-    .replace(/\b(etc\.?)(?=[\s,;:.)]|$)/gi, '__ETC__')       // etc / etc.
-    .replace(/\b(vs\.?)(?=[\s,;:.)]|$)/gi, '__VS__')         // vs / vs.
-    .replace(/\b(viz\.?)(?=[\s,;:.)]|$)/gi, '__VIZ__')       // viz
-    .replace(/\b(cf\.?)(?=[\s,;:.)]|$)/gi, '__CF__')         // cf
+    .replace(/\b(e\.?\s*g\.?)(?=[\s,;:.)]|$)/gi, '__EG__')
+    .replace(/\b(i\.?\s*e\.?)(?=[\s,;:.)]|$)/gi, '__IE__')
+    .replace(/\b(etc\.?)(?=[\s,;:.)]|$)/gi, '__ETC__')
+    .replace(/\b(vs\.?)(?=[\s,;:.)]|$)/gi, '__VS__')
+    .replace(/\b(viz\.?)(?=[\s,;:.)]|$)/gi, '__VIZ__')
+    .replace(/\b(cf\.?)(?=[\s,;:.)]|$)/gi, '__CF__')
     .replace(/\baka\b/gi, '__AKA__');
 
   // 3) Replace common symbols
@@ -178,14 +171,14 @@ function normalizeForTTS(input, lang = 'en') {
   const hasNamasteEn = /\bnamaste\b/i.test(s);
   const hasNamasteHi = /नमस्ते/.test(s);
   if (lang === 'hi') {
-    s = s.replace(/[\u{1F64F}]/gu, hasNamasteHi ? '' : ' नमस्ते '); // 🙏
+    s = s.replace(/[\u{1F64F}]/gu, hasNamasteHi ? '' : ' नमस्ते ');
   } else {
-    s = s.replace(/[\u{1F64F}]/gu, hasNamasteEn ? '' : ' Namaste '); // 🙏
+    s = s.replace(/[\u{1F64F}]/gu, hasNamasteEn ? '' : ' Namaste ');
   }
   // Remove other emojis
   s = s.replace(/[\u{1F300}-\u{1FAFF}]/gu, '');
 
-  // 5) Expand tokens exactly once (language-specific)
+  // 5) Expand tokens exactly once
   if (lang === 'hi') {
     s = s
       .replace(/__EG__/g, 'उदाहरण के लिए')
@@ -206,13 +199,12 @@ function normalizeForTTS(input, lang = 'en') {
       .replace(/__AKA__/g, 'also known as');
   }
 
-  // 6) Collapse duplicate greetings only (to avoid harming mantra recitations)
-  //   Examples handled: "Namaste, Namaste", "Namaste Namaste", "नमस्ते, नमस्ते"
+  // 6) Collapse duplicate greetings only
   s = s
     .replace(/\b(Namaste)(?:[,\s]+)\1\b/gi, 'Namaste')
     .replace(/(नमस्ते)(?:[,\s]+)\1/g, 'नमस्ते');
 
-  // 7) Normalize punctuation spacing and trim extra commas
+  // 7) Normalize punctuation spacing
   s = s
     .replace(/\s+([,.!?;:])/g, '$1')
     .replace(/([,.!?;:]){2,}/g, '$1')
@@ -221,7 +213,7 @@ function normalizeForTTS(input, lang = 'en') {
     .replace(/[\s,;:]+$/, '')
     .trim();
 
-  // 8) Safety: if string becomes empty, return a polite fallback
+  // 8) Safety
   if (!s) {
     s = lang === 'hi'
       ? 'क्षमा कीजिए, इस संदेश में बोलने योग्य सामग्री नहीं मिली।'
