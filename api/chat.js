@@ -59,7 +59,7 @@ function refusalMessage(userText) {
   if (isHindi(userText)) {
     return "🙏 नमस्ते। मैं केवल हिंदू अध्यात्म—मंदिर/देवी-देवता, पूजा/व्रत, मंत्र/स्तोत्र, त्यौहार/तीर्थ, शास्त्र, ध्यान आदि—से जुड़े प्रश्नों में मार्गदर्शन करता/करती हूँ। यह प्रश्न उस दायरे से बाहर है, इसलिए मैं उत्तर नहीं दे सकता/सकती। कृपया कोई आध्यात्मिक/धार्मिक प्रश्न पूछें, जैसे किसी पूजा की विधि, किसी मंदिर/तीर्थ की जानकारी, या किसी मंत्र/स्तोत्र का अर्थ/जप-विधि।";
   }
-  return "🙏 Namaste. I can only help with Hindu spirituality—temples/deities, puja/vrat, mantras/stotras, festivals, pilgrimages, scriptures, meditation, etc. This question is outside that scope, so I won’t answer it. Please ask a spiritual question (e.g., a puja method, a temple/pilgrimage detail, or the meaning/chanting of a mantra).";
+  return "🙏 Namaste. I am a spiritual guide and can only help with Hindu spirituality—temples/deities, puja/vrat, mantras/stotras, festivals, pilgrimages, scriptures, meditation, etc. Please ask a spiritual question (e.g., a puja method, a temple/pilgrimage detail, or the meaning/chanting of a mantra).";
 }
 
 // ---- Your full SYSTEM_PROMPT (restored) ----
