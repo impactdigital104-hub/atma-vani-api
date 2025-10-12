@@ -1,11 +1,12 @@
-// api/chat.js — Atma Vani v1.1 (robust)
-// - Hinduism-only scope (refuse out-of-scope, EN/HI)
-// - Uses OpenAI (gpt-4o-mini) with automatic fallback:
-//     1) Responses API  -> if fails, then
-//     2) Chat Completions API
-// - Preserves your full SYSTEM_PROMPT
-// - Adds a self-check pass (OK / REFUSE / REVISE)
-// - Logs to Firestore; updates theme via /api/classify-theme
+// File: api/chat.js
+// Contract (v1.1):
+// - Single-rule gate: use /api/classify-theme; answer ONLY if label/theme = "Hinduism" with confidence ≥ 0.80
+//   Otherwise refuse kindly in user's language.
+// - Backward compatible: if classifier has no confidence field, allow ONLY when theme/label is exactly "Hinduism".
+// - Model: OpenAI gpt-4o-mini (Responses API with Chat Completions fallback)
+// - System prompt: restored Atma Vani v1.1 (PLAIN TEXT, scope, persona, two follow-ups)
+// - Self-check: OK | REFUSE | REVISE (apply REVISE text if present)
+// - Firestore logging + theme update preserved
 // - CORS: * (MVP)
 
 const admin = require("firebase-admin");
@@ -40,32 +41,16 @@ function cors(res) {
 }
 function isHindi(text = "") { return /[\u0900-\u097F]/.test(String(text || "")); }
 
-// ---- Scope guard (cheap heuristic) ----
-function inScopeHeuristic(text = "") {
-  const t = (text || "").toLowerCase();
-  const allow = [
-    "hindu","sanatan","dharma","temple","mandir","deity","god","goddess",
-    "puja","pooja","aarti","arti","arati","archana","homam","yajna","havan",
-    "vrat","fast","upvas","festival","utsav","yatra","pilgrimage","tirth",
-    "mantra","stotra","stotram","sloka","shloka","bhajan","kirtan","japa",
-    "meditation","dhyana","yoga","guru",
-    "rudraksha","vastu","muhurta","panchang",
-    "vedas","upanishad","puran","purana","gita","bhagavad","ramayana","mahabharat",
-    "prasad","tilak","kumkum","abhishek","abhishekam","darshan"
-  ];
-  return allow.some(k => t.includes(k));
-}
 function refusalMessage(userText) {
   if (isHindi(userText)) {
-    return "🙏 नमस्ते. मैं एक आध्यात्मिक मार्गदर्शक हूँ जिसे केवल हिंदू आध्यात्मिकता से संबंधित किसी भी चीज़ में मदद करने के लिए बनाया गया है. कृपया एक आध्यात्मिक प्रश्न पूछें या अपने जीवन की समस्या का समाधान|";
+    return "🙏 नमस्ते. मैं एक आध्यात्मिक मार्गदर्शक हूँ जिसे केवल हिंदू आध्यात्मिकता से संबंधित विषयों में मदद करने के लिए बनाया गया है। कृपया मंदिर, देवता, पूजा-व्रत, मंत्र-स्तोत्र, शास्त्र, त्योहार या तीर्थयात्रा से जुड़ा प्रश्न पूछें।";
   }
-  return "🙏 Namaste. I am a spiritual guide designed to only help with anything on Hindu spirituality. Please ask a spiritual question or a solution to your life's problem.";
+  return "🙏 Namaste. I’m a spiritual guide for Hindu spirituality only. Please ask about temples/deities, puja/vrat, mantras/stotras, scriptures, festivals, pilgrimages, or devotional practice.";
 }
 
-// ---- Your full SYSTEM_PROMPT (restored) ----
+// ---- SYSTEM PROMPT (v1.1 restored) ----
 const SYSTEM_HEADER = [
-  "You are Atma Vani. Return PLAIN TEXT only (no Markdown).",
-  "Answer ONLY if the request is within Hindu spirituality scope; otherwise give a short, kind refusal guiding the user back to scope."
+  "Return PLAIN TEXT only. Answer only within scope; otherwise refuse kindly."
 ].join(" ");
 
 const YOUR_SYSTEM_PROMPT = `
@@ -81,51 +66,26 @@ You are **Atma Vani**, a Hindu Spiritual Guide. Stay strictly within Hindu spiri
 - If a topic isn’t clearly covered there, answer from widely accepted Hindu tradition; state uncertainties briefly; avoid niche specifics you can’t verify.
 - Do not include links unless the user explicitly asks; never invent URLs. If asked for a link and you’re unsure, say: “I don’t have the exact page yet—please check the main site.”
 
-## Answer Pattern Selector (detect the user’s intent)
-1) **Ritual / How-to** (puja, vrata, śrāddha/tarpana, japa)
-   - Include: purpose, materials, timing/tithi (note regional variation), orientation if relevant (e.g., facing south for ancestor rites), safe mantra set, step-by-step, after-ritual conduct (e.g., annadān/charity).
-   - Add a tiny checklist. Mention regional/paramparā variation; suggest confirming with a local priest if unsure.
+## Answer Pattern Selector
+1) Ritual / How-to
+2) Which / Choice
+3) Meaning / Significance / Philosophy
+4) Life-challenge (dharma-based practices; brief disclaimer)
+5) Temple / Yatra
+6) Festival observance
+7) Product/practice usage
 
-2) **Which / Choice** (which Rudraksha/fast/deity/temple?)
-   - Give a 2-option comparison; add a **one-sentence choice rule** (“pick A if…, pick B if…”).
-   - Add a micro-checklist (authenticity, sizing, energizing/wearing, routine).
+## Non-negotiable canon cues
+- Ancestor rites: til-tarpana with black sesame, facing south, darbha if available; Mahamrityunjaya / “Om Pitr̥bhyo Namah”; naivedya + annadan; regional variation note.
+- Rudraksha: one-mukhi rare; five-mukhi daily sattva/japa; six-mukhi often for Mars-type irritability.
+- Shakti Peethas: lists vary; Vaishno Devi revered but not typically counted among canonical Peethas; Shakti–Bhairava pairing note.
+- Jyotirlings: prefer region clusters; Kedarnath altitude/season note.
 
-3) **Meaning / Significance / Philosophy**
-   - Uplifting explanation tied to tradition; connect to 2–4 practical devotional actions.
+## Conversation design
+- End with exactly two short, decision-oriented follow-up questions that help the user take a next devotional step.
 
-4) **Life-challenge** (anger, stress, relationships, grief, money worries)
-   - Frame via dharma, karma, bhakti, seva, meditation, mantra, yoga, ethics. Offer a small daily routine.
-   - **Mandatory disclaimer:** “I’m an AI spiritual guide. I offer dharma-based practices for inner strength and clarity; this is not professional medical, legal, financial, or psychological advice.”
-
-5) **Temple / Yatra**
-   - Plan by **region clusters**; call out **season/altitude** if relevant; devotional focus and respectful conduct.
-   - Do not claim current timings/fees unless the user provides/asks; advise verifying locally/officially.
-
-6) **Festival observance**
-   - Brief significance + observance steps; foods to prefer/avoid; a small seva idea.
-
-7) **Product/practice usage** (malas, idols, puja items)
-   - Authenticity cues, respectful handling, energizing/installation basics, daily care (no prices; no sales push).
-
-## Non-negotiable canon cues (do not contradict)
-- **Ancestor rites:** home practice centers on **til-tarpana** (water + **black sesame**), **facing south**; **darbha** if available; **Mahamṛtyuñjaya** / “**Om Pitr̥bhyo Namaḥ**”; **naivedya** + **annadān**. Photo usage varies by paramparā—mark as custom-dependent.
-- **Rudraksha:** **Ek-mukhi** = emblem of Shiva (rare); **5-mukhi** widely recommended for daily sattva/japa; **6-mukhi** often suggested for Mars-type irritability/anger.
-- **Śakti Pīṭhas:** classical lists vary (51/52/108). **Vaiṣṇो Devī is revered but not typically counted** among the canonical Pīṭhas. Mention Śakti–Bhairava pairing if relevant.
-- **Jyotirliṅgas:** prefer **region clusters**; call out **Kedarnath** altitude/seasonal access.
-
-## Conversation design (MANDATORY)
-- End with **exactly two** open-ended, **decision-oriented** follow-up questions (bulleted) that move toward a concrete next step (e.g., pick date/tithi; home rite vs priest-led; pendant vs mala; time frame & cluster; altitude comfort; routine length). Avoid generic “learn more?” prompts.
-
-## Self-check rubric (think silently; do not print this)
-Before finalizing your answer, ensure ALL are true:
-- [ ] Covers the correct **intent pattern** with the required elements.
-- [ ] Includes a **choice rule** when the user asks “which”.
-- [ ] For rituals about ancestors: includes **til-tarpana** etc.; notes **regional variation**.
-- [ ] For temple/yatra: uses **region clusters** and **verification** note; no volatile claims.
-- [ ] No links unless asked; no prices; no invented specifics.
-- [ ] Ends with **two decision-oriented follow-ups** tailored to the user.
-
-## Exemplars…
+## Self-check rubric (silent)
+- Correct intent pattern; safe guidance; no links unless asked; two decision-oriented follow-ups; scope adherence.
 `;
 
 // ---- Self-check prompt ----
@@ -134,7 +94,7 @@ function selfCheckPrompt(user, draft) {
     "You are verifying a draft answer for scope, factuality, and tone.",
     "Rules:",
     "1) If the user's request is OUTSIDE Hindu spirituality scope, return: REFUSE",
-    "2) If the draft has obvious factual risk or unsafe ritual guidance, return: REVISE and provide a safer corrected answer.",
+    "2) If the draft has factual/safety issues, return: REVISE and provide a safer corrected answer.",
     "3) Else return: OK",
     "Return format (PLAIN TEXT, no Markdown):",
     "First line: one of OK | REFUSE | REVISE",
@@ -148,7 +108,7 @@ function selfCheckPrompt(user, draft) {
   ].join("\n");
 }
 
-// ---- OpenAI: Responses API, with fallback to Chat Completions ----
+// ---- OpenAI calls ----
 async function callOpenAIResponses(inputArray) {
   const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -174,7 +134,6 @@ async function callOpenAIChatCompletions(messages) {
   return out;
 }
 async function askModel(userMessage) {
-  // try Responses first, then fallback
   try {
     return await callOpenAIResponses([
       { role: "system", content: `${SYSTEM_HEADER}\n\n${YOUR_SYSTEM_PROMPT}` },
@@ -189,17 +148,14 @@ async function askModel(userMessage) {
   }
 }
 async function selfCheck(userMessage, draftAnswer) {
-  // try Responses, then fallback
   try {
-    return await (async () => {
-      const text = await callOpenAIResponses([
-        { role: "system", content: "You are a careful, concise verifier." },
-        { role: "user",   content: selfCheckPrompt(userMessage, draftAnswer) }
-      ]);
-      const firstLine = text.split("\n")[0].trim().toUpperCase();
-      const rest = text.split("\n").slice(2).join("\n").trim();
-      return { verdict: firstLine, revised: rest };
-    })();
+    const text = await callOpenAIResponses([
+      { role: "system", content: "You are a careful, concise verifier." },
+      { role: "user",   content: selfCheckPrompt(userMessage, draftAnswer) }
+    ]);
+    const firstLine = text.split("\n")[0].trim().toUpperCase();
+    const rest = text.split("\n").slice(2).join("\n").trim();
+    return { verdict: firstLine, revised: rest };
   } catch (e1) {
     console.warn("[chat] Verifier Responses failed, falling back:", e1.message);
     const text = await callOpenAIChatCompletions([
@@ -212,7 +168,7 @@ async function selfCheck(userMessage, draftAnswer) {
   }
 }
 
-// ---- Theme classifier (existing endpoint) ----
+// ---- Classifier call (expects label + confidence if available) ----
 async function classifyTheme(host, text) {
   try {
     const r = await fetch(`https://${host}/api/classify-theme`, {
@@ -222,7 +178,9 @@ async function classifyTheme(host, text) {
     });
     if (!r.ok) return { theme: "Other" };
     return await r.json();
-  } catch { return { theme: "Other" }; }
+  } catch {
+    return { theme: "Other" };
+  }
 }
 
 // ---- Handler ----
@@ -232,27 +190,38 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") { res.statusCode = 405; return res.end("Method Not Allowed"); }
 
   try {
-    // Vercel Node APIs often deliver req.body as a string (we handle both)
-    const bodyStr = typeof req.body === "string" ? req.body : (req.body ? JSON.stringify(req.body) : "{}");
-    const { message } = JSON.parse(bodyStr || "{}");
+    // Vercel can pass body as string or object
+    let bodyObj = {};
+    try {
+      if (typeof req.body === "string") bodyObj = JSON.parse(req.body || "{}");
+      else if (req.body && typeof req.body === "object") bodyObj = req.body;
+      else bodyObj = {};
+    } catch { bodyObj = {}; }
+
+    const { message } = bodyObj;
 
     if (!message || typeof message !== "string") {
       res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
       return res.end(JSON.stringify({ error: "Missing 'message'." }));
     }
 
     const host = req.headers.host;
 
-    // Quick scope gate before calling the model
-    const heuristicOK = inScopeHeuristic(message);
-    let themeOK = false;
-    try {
-      const { theme = "Other" } = await classifyTheme(host, message);
-      const allowed = ["Temple","Puja","Mantra","Scripture","Festival","Pilgrimage","Meditation","Rudraksha","Astrology","Spiritual"];
-      themeOK = allowed.includes(theme);
-    } catch {}
+    // ===== Single-rule gate =====
+    // We rely solely on classifier result.
+    // Allow only if label/theme is Hinduism with confidence >= 0.80.
+    let allow = false;
+    let cls = await classifyTheme(host, message);
+    // Normalize fields for backward-compat
+    const label = (cls.label || cls.theme || "").toString();
+    const conf  = typeof cls.confidence === "number" ? cls.confidence : (label === "Hinduism" ? 1.0 : 0.0);
 
-    if (!(heuristicOK || themeOK)) {
+    if (label === "Hinduism" && conf >= 0.80) {
+      allow = true;
+    }
+
+    if (!allow) {
       const refusal = refusalMessage(message);
       if (db) {
         await db.collection("messages").add({
@@ -261,12 +230,13 @@ module.exports = async (req, res) => {
           userMessage: message,
           assistantReply: refusal,
           theme: "Other",
-          build: "v1.1-voice"
+          build: "v1.1",
         });
       }
       res.setHeader("Content-Type", "application/json");
-      return res.end(JSON.stringify({ reply: refusal }));
+      return res.end(JSON.stringify({ reply: refusal, gate: { label, confidence: conf } }));
     }
+    // ============================
 
     // Main answer + self-check
     const t0 = Date.now();
@@ -293,8 +263,8 @@ module.exports = async (req, res) => {
         source: "vercel-api",
         userMessage: message,
         assistantReply: finalReply,
-        theme: "Other",            // updated below
-        build: "v1.1-voice",
+        theme: "Other", // updated below
+        build: "v1.1",
         chatMs,
       });
       docId = ref.id;
@@ -302,7 +272,8 @@ module.exports = async (req, res) => {
 
     // Update theme (best-effort)
     try {
-      const { theme: finalTheme = "Other" } = await classifyTheme(host, `${message}\n---\n${finalReply}`);
+      const post = await classifyTheme(host, `${message}\n---\n${finalReply}`);
+      const finalTheme = post.theme || post.label || "Other";
       if (db && docId) await db.collection("messages").doc(docId).update({ theme: finalTheme });
     } catch {}
 
