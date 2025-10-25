@@ -483,23 +483,26 @@
       }
     }
   </script>
-<!-- Auth: minimal modal shell (drop-in) -->
+<!-- Auth: minimal modal shell (single close button) -->
 <div id="authModal" hidden
   style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;display:none">
-  <div style="margin:auto;width:90%;max-width:360px;background:#fff;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-      <button id="tabSignIn" style="flex:1;padding:.5rem .75rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff">Sign in</button>
-      <button id="tabCreate" style="flex:1;padding:.5rem .75rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff">Create account</button>
-      <button id="authClose" aria-label="Close"
-        onclick="document.getElementById('authModal').hidden=true"
-        style="margin-left:auto;padding:.35rem .55rem;border-radius:12px;border:1px solid #E5E7EB;background:#F9FAFB">✕</button>
-    </div><button id="authClose" aria-label="Close"
-  onclick="document.getElementById('authModal').hidden=true"
-  style="margin-left:auto;padding:.35rem .55rem;border-radius:9999px;border:1px solid #111827;background:#111827;color:#fff;font-weight:700">✕</button>
+  <div style="position:relative;margin:auto;width:90%;max-width:420px;background:#fff;border-radius:16px;padding:16px 16px 20px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+    <!-- Close (single) -->
+    <button id="authClose" aria-label="Close"
+      style="position:absolute;top:10px;right:10px;padding:.4rem .55rem;border-radius:9999px;border:1px solid #111827;background:#111827;color:#fff;font-weight:700;line-height:1">✕</button>
+
+    <!-- Header tabs -->
+    <div style="display:flex;gap:10px;align-items:center;justify-content:flex-start;margin:6px 36px 12px 6px">
+      <button id="tabSignIn" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Sign in</button>
+      <button id="tabCreate" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Create account</button>
+    </div>
+
+    <!-- Body -->
     <div id="authBody" style="min-height:120px;color:#6B7280">Coming next…</div>
   </div>
 </div>
 <script>
+  // Modal open/close helpers
   const m = document.getElementById('authModal');
   const t = document.getElementById('authTrigger');
   const c = document.getElementById('authClose');
@@ -507,10 +510,10 @@
   function openAuth(){ if(!m) return; m.hidden = false; m.style.display = 'grid'; }
   function closeAuth(){ if(!m) return; m.hidden = true;  m.style.display = ''; }
 
+  // Wire up
   t && t.addEventListener('click', openAuth);
   c && c.addEventListener('click', closeAuth);
   document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAuth(); });
-  // click outside card closes
   m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
 </script>
 </body>
