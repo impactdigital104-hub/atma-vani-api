@@ -483,5 +483,21 @@
       }
     }
   </script>
+  <!-- Auth: minimal modal shell -->
+<div id="authModal" hidden style="position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.4);z-index:10000">
+  <div style="width:90%;max-width:360px;background:#fff;border-radius:12px;padding:16px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <button id="tabSignIn" style="flex:1">Sign in</button>
+      <button id="tabCreate" style="flex:1">Create account</button>
+      <button id="authClose" aria-label="Close" style="margin-left:auto">✕</button>
+    </div>
+    <div id="authBody" style="min-height:120px">Coming next…</div>
+  </div>
+</div>
+<script>
+  const m=document.getElementById('authModal');
+  document.getElementById('authTrigger').onclick=()=>m.hidden=false;
+  document.getElementById('authClose').onclick=()=>m.hidden=true;
+</script>
 </body>
 </html>
