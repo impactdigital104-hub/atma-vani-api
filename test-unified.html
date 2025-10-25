@@ -521,6 +521,27 @@
   import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   // Sanity check only (no init yet)
   console.log("Firebase SDK ready:", !!initializeApp, !!getAuth);
+    <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  // ⬇️ Paste your STAGING config values from Firebase console
+  const firebaseConfig = {
+    apiKey: "AIzaSyCrAu7GenmKSaiyVkWXjkcshD4twtYUw14",
+    authDomain: "atma-vani-staging.firebaseapp.com",
+    projectId: "atma-vani-staging",
+    appId: "1:753123327055:web:9c7166d6e1f3cdf7a07e3a",
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  window._avAuth = auth; // expose for later steps
+
+  console.log("Firebase init OK:", app.options.projectId);
+  onAuthStateChanged(auth, (user) => {
+    console.log("Auth state:", user ? user.email : "signed out");
+  });
+</script>
 </script>
 </body>
 </html>
