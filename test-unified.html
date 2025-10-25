@@ -483,25 +483,33 @@
       }
     }
   </script>
-  <!-- Auth: minimal modal shell -->
-<div id="authModal" hidden style="position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.4);z-index:10000">
-  <div style="width:90%;max-width:360px;background:#fff;border-radius:12px;padding:16px">
+<!-- Auth: minimal modal shell (drop-in) -->
+<div id="authModal" hidden
+  style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;display:none">
+  <div style="margin:auto;width:90%;max-width:360px;background:#fff;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-      <button id="tabSignIn" style="flex:1">Sign in</button>
-      <button id="tabCreate" style="flex:1">Create account</button>
-     <button id="authClose" aria-label="Close"
-  onclick="document.getElementById('authModal').hidden=true">✕</button>
+      <button id="tabSignIn" style="flex:1;padding:.5rem .75rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff">Sign in</button>
+      <button id="tabCreate" style="flex:1;padding:.5rem .75rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff">Create account</button>
+      <button id="authClose" aria-label="Close"
+        onclick="document.getElementById('authModal').hidden=true"
+        style="margin-left:auto;padding:.35rem .55rem;border-radius:12px;border:1px solid #E5E7EB;background:#F9FAFB">✕</button>
     </div>
-    <div id="authBody" style="min-height:120px">Coming next…</div>
+    <div id="authBody" style="min-height:120px;color:#6B7280">Coming next…</div>
   </div>
 </div>
 <script>
-  const m=document.getElementById('authModal'),
-        t=document.getElementById('authTrigger'),
-        c=document.getElementById('authClose');
-  t&&t.addEventListener('click',()=>{m&&(m.hidden=false)});
-  c&&c.addEventListener('click',()=>{m&&(m.hidden=true)});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&m){m.hidden=true}});
+  const m = document.getElementById('authModal');
+  const t = document.getElementById('authTrigger');
+  const c = document.getElementById('authClose');
+
+  function openAuth(){ if(!m) return; m.hidden = false; m.style.display = 'grid'; }
+  function closeAuth(){ if(!m) return; m.hidden = true;  m.style.display = ''; }
+
+  t && t.addEventListener('click', openAuth);
+  c && c.addEventListener('click', closeAuth);
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAuth(); });
+  // click outside card closes
+  m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
 </script>
 </body>
 </html>
