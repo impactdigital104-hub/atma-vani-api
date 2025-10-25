@@ -489,15 +489,19 @@
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
       <button id="tabSignIn" style="flex:1">Sign in</button>
       <button id="tabCreate" style="flex:1">Create account</button>
-      <button id="authClose" aria-label="Close" style="margin-left:auto">✕</button>
+     <button id="authClose" aria-label="Close"
+  onclick="document.getElementById('authModal').hidden=true">✕</button>
     </div>
     <div id="authBody" style="min-height:120px">Coming next…</div>
   </div>
 </div>
 <script>
-  const m=document.getElementById('authModal');
-  document.getElementById('authTrigger').onclick=()=>m.hidden=false;
-  document.getElementById('authClose').onclick=()=>m.hidden=true;
+  const m=document.getElementById('authModal'),
+        t=document.getElementById('authTrigger'),
+        c=document.getElementById('authClose');
+  t&&t.addEventListener('click',()=>{m&&(m.hidden=false)});
+  c&&c.addEventListener('click',()=>{m&&(m.hidden=true)});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&m){m.hidden=true}});
 </script>
 </body>
 </html>
