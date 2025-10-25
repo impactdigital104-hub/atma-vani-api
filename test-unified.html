@@ -497,40 +497,38 @@
       <button id="tabCreate" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Create account</button>
     </div>
 
-    <!-- Body -->
+    <!-- Body (we'll fill this next step) -->
     <div id="authBody" style="min-height:120px;color:#6B7280">Coming next…</div>
   </div>
 </div>
+
+<!-- Modal open/close (non-module) -->
 <script>
-  // Modal open/close helpers
   const m = document.getElementById('authModal');
-  const t = document.getElementById('authTrigger');
+  const t = document.getElementById('authTrigger'); // this is the header button you added earlier
   const c = document.getElementById('authClose');
 
   function openAuth(){ if(!m) return; m.hidden = false; m.style.display = 'grid'; }
   function closeAuth(){ if(!m) return; m.hidden = true;  m.style.display = ''; }
 
-  // Wire up
   t && t.addEventListener('click', openAuth);
   c && c.addEventListener('click', closeAuth);
   document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAuth(); });
   m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
 </script>
-  <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  // Sanity check only (no init yet)
-  console.log("Firebase SDK ready:", !!initializeApp, !!getAuth);
-    <script type="module">
+
+<!-- Firebase SDK + init (single module block) -->
+<script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  // ⬇️ Paste your STAGING config values from Firebase console
+  // STAGING config (from Firebase console)
   const firebaseConfig = {
     apiKey: "AIzaSyCrAu7GenmKSaiyVkWXjkcshD4twtYUw14",
     authDomain: "atma-vani-staging.firebaseapp.com",
     projectId: "atma-vani-staging",
-    appId: "1:753123327055:web:9c7166d6e1f3cdf7a07e3a",
+    appId: "1:753123327055:web:9c7166d6e1f3cdf7a07e3a"
+    // measurementId can be added if you have it; it's optional here
   };
 
   const app = initializeApp(firebaseConfig);
@@ -542,6 +540,8 @@
     console.log("Auth state:", user ? user.email : "signed out");
   });
 </script>
+</body>
+</html>
 </script>
 </body>
 </html>
