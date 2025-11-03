@@ -606,6 +606,27 @@ crForm && crForm.addEventListener('submit', async (e)=>{
     crErr.textContent = msg;
   }
 });
+  // Sign in (Email/Password)
+const siForm = document.getElementById('signInForm');
+const siEmail = document.getElementById('siEmail');
+const siPass  = document.getElementById('siPass');
+const siErr   = document.getElementById('siErr');
+
+siForm && siForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if (!siEmail || !siPass) return;
+  siErr.textContent = '';
+  try {
+    const cred = await signInWithEmailAndPassword(auth, siEmail.value.trim(), siPass.value);
+    console.log('Signed in:', cred.user?.email);
+    // Close modal on success
+    const modal = document.getElementById('authModal');
+    if (modal) { modal.hidden = true; modal.style.display = ''; }
+  } catch (err) {
+    const msg = (err && err.message ? err.message.replace(/^Firebase:\s*/,'') : 'Sign-in failed');
+    siErr.textContent = msg;
+  }
+});
 </script>
 </body>
 </html>
