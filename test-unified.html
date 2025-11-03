@@ -583,8 +583,12 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
 
   console.log("Firebase init OK:", app.options.projectId);
   onAuthStateChanged(auth, (user) => {
-    console.log("Auth state:", user ? user.email : "signed out");
-  });
+  console.log("Auth state:", user ? user.email : "signed out");
+  const btn = document.getElementById('authTrigger');
+  if (btn) {
+    btn.textContent = user ? `Signed in as ${user.email}` : 'Sign in / Create account';
+  }
+});
   // Create account (Email/Password)
 const crForm = document.getElementById('createForm');
 const crEmail = document.getElementById('crEmail');
