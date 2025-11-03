@@ -508,7 +508,7 @@
       </form>
 
       <!-- Create account -->
-      <form id="createForm" hidden style="display:grid;gap:8px">
+      <form id="createForm" style="display:none;gap:8px">
         <input id="crEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
         <input id="crPass" type="password" placeholder="Password (6+ chars)" minlength="6" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
         <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Create account</button>
@@ -524,15 +524,15 @@
   const t = document.getElementById('authTrigger'); // header button you added earlier
   const c = document.getElementById('authClose');
 
-  function openAuth(){
-    if(!m) return;
-    m.hidden = false; 
-    m.style.display = 'grid';
-    // default view = Sign in (defensive)
-    const fIn = document.getElementById('signInForm');
-    const fCr = document.getElementById('createForm');
-    if (fIn && fCr) { fIn.hidden = false; fCr.hidden = true; }
-  }
+ function openAuth(){
+  if(!m) return;
+  m.hidden = false;
+  m.style.display = 'grid';
+  // default view = Sign in
+  const fIn = document.getElementById('signInForm');
+  const fCr = document.getElementById('createForm');
+  if (fIn && fCr){ fIn.style.display='grid'; fCr.style.display='none'; }
+}
   function closeAuth(){
     if(!m) return;
     m.hidden = true;
@@ -553,8 +553,8 @@
     const fIn   = document.getElementById('signInForm');
     const fCr   = document.getElementById('createForm');
 
-    const showSignIn = ()=>{ if(fIn&&fCr){ fIn.hidden=false; fCr.hidden=true; } };
-    const showCreate = ()=>{ if(fIn&&fCr){ fIn.hidden=true;  fCr.hidden=false; } };
+const showSignIn = ()=>{ if(fIn&&fCr){ fIn.style.display='grid'; fCr.style.display='none'; } };
+const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.display='grid'; } };
 
     tabIn && tabIn.addEventListener('click', showSignIn);
     tabCr && tabCr.addEventListener('click', showCreate);
