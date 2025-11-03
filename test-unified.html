@@ -524,8 +524,15 @@
   const t = document.getElementById('authTrigger'); // this is the header button you added earlier
   const c = document.getElementById('authClose');
 
-  function openAuth(){ if(!m) return; m.hidden = false; m.style.display = 'grid'; }
-  function closeAuth(){ if(!m) return; m.hidden = true;  m.style.display = ''; }
+  function openAuth(){
+  if(!m) return;
+  m.hidden = false; 
+  m.style.display = 'grid';
+  // default view = Sign in
+  const fIn = document.getElementById('signInForm');
+  const fCr = document.getElementById('createForm');
+  if (fIn && fCr) { fIn.hidden = false; fCr.hidden = true; }
+}
 
   t && t.addEventListener('click', openAuth);
   c && c.addEventListener('click', closeAuth);
