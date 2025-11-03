@@ -540,6 +540,24 @@
   m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
 </script>
   <script>
+  // Tabs: show only one form at a time
+  window.addEventListener('DOMContentLoaded', ()=>{
+    const tabIn = document.getElementById('tabSignIn');
+    const tabCr = document.getElementById('tabCreate');
+    const fIn   = document.getElementById('signInForm');
+    const fCr   = document.getElementById('createForm');
+
+    const showSignIn = ()=>{ if(fIn&&fCr){ fIn.hidden=false; fCr.hidden=true; } };
+    const showCreate = ()=>{ if(fIn&&fCr){ fIn.hidden=true;  fCr.hidden=false; } };
+
+    tabIn && tabIn.addEventListener('click', showSignIn);
+    tabCr && tabCr.addEventListener('click', showCreate);
+
+    // Set default view on page load
+    showSignIn();
+  });
+</script>
+  <script>
   // Auth: tab switching + disable submits (no logic yet)
   const tabIn = document.getElementById('tabSignIn');
   const tabCr = document.getElementById('tabCreate');
