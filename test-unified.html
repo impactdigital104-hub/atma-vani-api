@@ -542,10 +542,14 @@
   function showSignIn(){ if(fIn&&fCr){ fIn.hidden=false; fCr.hidden=true; } }
   function showCreate(){ if(fIn&&fCr){ fIn.hidden=true;  fCr.hidden=false; } }
 
+  // Wire up
   tabIn && tabIn.addEventListener('click', showSignIn);
   tabCr && tabCr.addEventListener('click', showCreate);
 
-  // Prevent default submit for now (handlers come next step)
+  // Ensure default view on load = Sign in
+  showSignIn();
+
+  // Prevent submits for now (handlers come next)
   fIn && fIn.addEventListener('submit', e=>e.preventDefault());
   fCr && fCr.addEventListener('submit', e=>e.preventDefault());
 </script>
