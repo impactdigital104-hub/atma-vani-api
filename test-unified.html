@@ -483,11 +483,11 @@
       }
     }
   </script>
-<!-- Auth: minimal modal shell (single close button) -->
+<!-- Auth: minimal modal shell (single close button, clean reset) -->
 <div id="authModal" hidden
   style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;display:none">
   <div style="position:relative;margin:auto;width:90%;max-width:420px;background:#fff;border-radius:16px;padding:16px 16px 20px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
-    <!-- Close (single) -->
+    <!-- Close -->
     <button id="authClose" aria-label="Close"
       style="position:absolute;top:10px;right:10px;padding:.4rem .55rem;border-radius:9999px;border:1px solid #111827;background:#111827;color:#fff;font-weight:700;line-height:1">✕</button>
 
@@ -497,50 +497,56 @@
       <button id="tabCreate" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Create account</button>
     </div>
 
-    <!-- Body (we'll fill this next step) -->
+    <!-- Body (forms) -->
     <div id="authBody" style="min-height:120px">
-  <!-- Sign in (default) -->
-  <form id="signInForm" style="display:grid;gap:8px">
-    <input id="siEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-    <input id="siPass" type="password" placeholder="Password" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-    <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Sign in</button>
-    <div id="siErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
-  </form>
+      <!-- Sign in (default) -->
+      <form id="signInForm" style="display:grid;gap:8px">
+        <input id="siEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+        <input id="siPass" type="password" placeholder="Password" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+        <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Sign in</button>
+        <div id="siErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
+      </form>
 
-  <!-- Create account -->
-  <form id="createForm" hidden style="display:grid;gap:8px">
-    <input id="crEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-    <input id="crPass" type="password" placeholder="Password (6+ chars)" minlength="6" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-    <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Create account</button>
-    <div id="crErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
-  </form>
-</div>
+      <!-- Create account -->
+      <form id="createForm" hidden style="display:grid;gap:8px">
+        <input id="crEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+        <input id="crPass" type="password" placeholder="Password (6+ chars)" minlength="6" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+        <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Create account</button>
+        <div id="crErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
+      </form>
+    </div>
   </div>
 </div>
 
 <!-- Modal open/close (non-module) -->
 <script>
   const m = document.getElementById('authModal');
-  const t = document.getElementById('authTrigger'); // this is the header button you added earlier
+  const t = document.getElementById('authTrigger'); // header button you added earlier
   const c = document.getElementById('authClose');
 
   function openAuth(){
-  if(!m) return;
-  m.hidden = false; 
-  m.style.display = 'grid';
-  // default view = Sign in
-  const fIn = document.getElementById('signInForm');
-  const fCr = document.getElementById('createForm');
-  if (fIn && fCr) { fIn.hidden = false; fCr.hidden = true; }
-}
+    if(!m) return;
+    m.hidden = false; 
+    m.style.display = 'grid';
+    // default view = Sign in (defensive)
+    const fIn = document.getElementById('signInForm');
+    const fCr = document.getElementById('createForm');
+    if (fIn && fCr) { fIn.hidden = false; fCr.hidden = true; }
+  }
+  function closeAuth(){
+    if(!m) return;
+    m.hidden = true;
+    m.style.display = '';
+  }
 
   t && t.addEventListener('click', openAuth);
   c && c.addEventListener('click', closeAuth);
   document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAuth(); });
   m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
 </script>
-  <script>
-  // Tabs: show only one form at a time
+
+<!-- Tabs: toggle forms (non-module) -->
+<script>
   window.addEventListener('DOMContentLoaded', ()=>{
     const tabIn = document.getElementById('tabSignIn');
     const tabCr = document.getElementById('tabCreate');
@@ -553,30 +559,9 @@
     tabIn && tabIn.addEventListener('click', showSignIn);
     tabCr && tabCr.addEventListener('click', showCreate);
 
-    // Set default view on page load
+    // Set default view on page load (defensive)
     showSignIn();
   });
-</script>
-  <script>
-  // Auth: tab switching + disable submits (no logic yet)
-  const tabIn = document.getElementById('tabSignIn');
-  const tabCr = document.getElementById('tabCreate');
-  const fIn = document.getElementById('signInForm');
-  const fCr = document.getElementById('createForm');
-
-  function showSignIn(){ if(fIn&&fCr){ fIn.hidden=false; fCr.hidden=true; } }
-  function showCreate(){ if(fIn&&fCr){ fIn.hidden=true;  fCr.hidden=false; } }
-
-  // Wire up
-  tabIn && tabIn.addEventListener('click', showSignIn);
-  tabCr && tabCr.addEventListener('click', showCreate);
-
-  // Ensure default view on load = Sign in
-  showSignIn();
-
-  // Prevent submits for now (handlers come next)
-  fIn && fIn.addEventListener('submit', e=>e.preventDefault());
-  fCr && fCr.addEventListener('submit', e=>e.preventDefault());
 </script>
 
 <!-- Firebase SDK + init (single module block) -->
@@ -590,20 +575,17 @@
     authDomain: "atma-vani-staging.firebaseapp.com",
     projectId: "atma-vani-staging",
     appId: "1:753123327055:web:9c7166d6e1f3cdf7a07e3a"
-    // measurementId can be added if you have it; it's optional here
+    // measurementId optional
   };
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  window._avAuth = auth; // expose for later steps
+  window._avAuth = auth; // for later steps
 
   console.log("Firebase init OK:", app.options.projectId);
   onAuthStateChanged(auth, (user) => {
     console.log("Auth state:", user ? user.email : "signed out");
   });
-</script>
-</body>
-</html>
 </script>
 </body>
 </html>
