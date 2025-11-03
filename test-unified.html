@@ -646,5 +646,20 @@ const btn = document.getElementById('authTrigger'); if (btn && cred?.user?.email
   }
 });
 </script>
+  <script>
+  // One-shot header sync after page load
+  window.addEventListener('load', ()=>{
+    try{
+      const auth = window._avAuth; // set in the module block
+      const btn  = document.getElementById('authTrigger');
+      const u    = auth && auth.currentUser;
+      if (btn) {
+        btn.textContent = (u && u.email)
+          ? `Signed in as ${u.email}`
+          : 'Sign in / Create account';
+      }
+    }catch(e){}
+  });
+</script>
 </body>
 </html>
