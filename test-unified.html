@@ -498,7 +498,23 @@
     </div>
 
     <!-- Body (we'll fill this next step) -->
-    <div id="authBody" style="min-height:120px;color:#6B7280">Coming next…</div>
+    <div id="authBody" style="min-height:120px">
+  <!-- Sign in (default) -->
+  <form id="signInForm" style="display:grid;gap:8px">
+    <input id="siEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+    <input id="siPass" type="password" placeholder="Password" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+    <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Sign in</button>
+    <div id="siErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
+  </form>
+
+  <!-- Create account -->
+  <form id="createForm" hidden style="display:grid;gap:8px">
+    <input id="crEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+    <input id="crPass" type="password" placeholder="Password (6+ chars)" minlength="6" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+    <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Create account</button>
+    <div id="crErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
+  </form>
+</div>
   </div>
 </div>
 
@@ -515,6 +531,23 @@
   c && c.addEventListener('click', closeAuth);
   document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAuth(); });
   m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
+</script>
+  <script>
+  // Auth: tab switching + disable submits (no logic yet)
+  const tabIn = document.getElementById('tabSignIn');
+  const tabCr = document.getElementById('tabCreate');
+  const fIn = document.getElementById('signInForm');
+  const fCr = document.getElementById('createForm');
+
+  function showSignIn(){ if(fIn&&fCr){ fIn.hidden=false; fCr.hidden=true; } }
+  function showCreate(){ if(fIn&&fCr){ fIn.hidden=true;  fCr.hidden=false; } }
+
+  tabIn && tabIn.addEventListener('click', showSignIn);
+  tabCr && tabCr.addEventListener('click', showCreate);
+
+  // Prevent default submit for now (handlers come next step)
+  fIn && fIn.addEventListener('submit', e=>e.preventDefault());
+  fCr && fCr.addEventListener('submit', e=>e.preventDefault());
 </script>
 
 <!-- Firebase SDK + init (single module block) -->
