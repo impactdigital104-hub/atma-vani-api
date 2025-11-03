@@ -582,12 +582,22 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
   window._avAuth = auth; // for later steps
 
   console.log("Firebase init OK:", app.options.projectId);
-  onAuthStateChanged(auth, (user) => {
-  console.log("Auth state:", user ? user.email : "signed out");
+  // Keep the header button in sync with auth state
+function setHeaderForUser(user){
   const btn = document.getElementById('authTrigger');
-  if (btn) {
-    btn.textContent = user ? `Signed in as ${user.email}` : 'Sign in / Create account';
-  }
+  if (!btn) return;
+  btn.textContent = (user && user.email)
+    ? `Signed in as ${user.email}`
+    : 'Sign in / Create account';
+}
+
+// Set once on load (in case Firebase already has a cached user)
+setHeaderForUser(auth.currentUser);
+
+// Then keep it updated on any change
+onAuthStateChanged(auth, (user) => {
+  console.log("Auth state:", user ? user.email : "signed out");
+  setHeaderForUser(user);
 });
   // Create account (Email/Password)
 const crForm = document.getElementById('createForm');
