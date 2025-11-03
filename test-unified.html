@@ -567,8 +567,7 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
 <!-- Firebase SDK + init (single module block) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
+  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   // STAGING config (from Firebase console)
   const firebaseConfig = {
     apiKey: "AIzaSyCrAu7GenmKSaiyVkWXjkcshD4twtYUw14",
