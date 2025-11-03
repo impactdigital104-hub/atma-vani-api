@@ -38,6 +38,10 @@
   style="padding:.5rem .75rem;border:1px solid var(--border);background:var(--panel);border-radius:9999px;font-size:14px;cursor:pointer;position:fixed;top:12px;right:12px;z-index:9999">
   Sign in / Create account
 </button>
+  <button id="authSignOut" type="button"
+  style="padding:.5rem .75rem;border:1px solid var(--border);background:#1b2030;border-radius:9999px;font-size:14px;cursor:pointer;position:fixed;top:12px;right:180px;z-index:9999;display:none">
+  Sign out
+</button>
   <div class="wrap">
     <h1>Atma Vani — Unified (Text + Voice)</h1>
     <p class="sub">Auto-detects English/Hindi, speaks a concise summary (~45s) by default, and strips Markdown so the voice doesn’t read asterisks.</p>
@@ -567,7 +571,7 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
 <!-- Firebase SDK + init (single module block) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   // STAGING config (from Firebase console)
   const firebaseConfig = {
     apiKey: "AIzaSyCrAu7GenmKSaiyVkWXjkcshD4twtYUw14",
@@ -585,12 +589,17 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
   // Keep the header button in sync with auth state
 function setHeaderForUser(user){
   const btn = document.getElementById('authTrigger');
-  if (!btn) return;
-  btn.textContent = (user && user.email)
-    ? `Signed in as ${user.email}`
-    : 'Sign in / Create account';
+  const so  = document.getElementById('authSignOut');
+  if (btn) {
+    btn.textContent = (user && user.email)
+      ? `Signed in as ${user.email}`
+      : 'Sign in / Create account';
+  }
+  if (so) {
+    // Show Sign out only when a user is signed in
+    so.style.display = (user && user.email) ? 'inline-block' : 'none';
+  }
 }
-
 // Set once on load (in case Firebase already has a cached user)
 setHeaderForUser(auth.currentUser);
 
@@ -641,6 +650,17 @@ siForm && siForm.addEventListener('submit', async (e)=>{
   } catch (err) {
     const msg = (err && err.message ? err.message.replace(/^Firebase:\s*/,'') : 'Sign-in failed');
     siErr.textContent = msg;
+  }
+});
+  // Sign out (header button)
+const soBtn = document.getElementById('authSignOut');
+soBtn && soBtn.addEventListener('click', async ()=>{
+  try {
+    await signOut(auth);              // Firebase signs you out
+    setHeaderForUser(null);           // update header immediately
+    alert('Signed out');              // small confirmation
+  } catch (e) {
+    alert('Sign out failed: ' + (e?.message || e));
   }
 });
 </script>
