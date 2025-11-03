@@ -567,7 +567,7 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
 <!-- Firebase SDK + init (single module block) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // STAGING config (from Firebase console)
   const firebaseConfig = {
@@ -586,6 +586,27 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
   onAuthStateChanged(auth, (user) => {
     console.log("Auth state:", user ? user.email : "signed out");
   });
+  // Create account (Email/Password)
+const crForm = document.getElementById('createForm');
+const crEmail = document.getElementById('crEmail');
+const crPass  = document.getElementById('crPass');
+const crErr   = document.getElementById('crErr');
+
+crForm && crForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if (!crEmail || !crPass) return;
+  crErr.textContent = '';
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, crEmail.value.trim(), crPass.value);
+    console.log('Created user:', cred.user?.email);
+    // Close modal on success
+    const modal = document.getElementById('authModal');
+    if (modal) { modal.hidden = true; modal.style.display = ''; }
+  } catch (err) {
+    const msg = (err && err.message ? err.message.replace(/^Firebase:\s*/,'') : 'Sign-up failed');
+    crErr.textContent = msg;
+  }
+});
 </script>
 </body>
 </html>
