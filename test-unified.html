@@ -633,6 +633,8 @@ siForm && siForm.addEventListener('submit', async (e)=>{
   try {
     const cred = await signInWithEmailAndPassword(auth, siEmail.value.trim(), siPass.value);
     console.log('Signed in:', cred.user?.email);
+    localStorage.setItem('av_user_email', cred?.user?.email || '');
+const btn = document.getElementById('authTrigger'); if (btn && cred?.user?.email) btn.textContent = `Signed in as ${cred.user.email}`;
     +   const btn = document.getElementById('authTrigger');
 +   if (btn && cred?.user?.email) btn.textContent = `Signed in as ${cred.user.email}`;
     // Close modal on success
