@@ -682,14 +682,12 @@ soBtn && soBtn.addEventListener('click', async ()=>{
     }catch(e){}
   });
 </script>
-  <script>
+<script>
 (()=>{const kC='av_anon_counter',kM='av_anon_lastReset',bad=document.getElementById('quotaBadge');
-const u=(window._avAuth&&window._avAuth.currentUser)||null; if(u){bad&&(bad.style.display='none');return;}
-const show=()=>{const m=new Date().toISOString().slice(0,7),l=localStorage.getItem(kM);if(l!==m){localStorage.setItem(kM,m);localStorage.setItem(kC,'0');}
-const c=+(localStorage.getItem(kC)||'0');if(bad){bad.style.display='inline';bad.textContent=`${c}/10`;} return c};
-const inc=()=>{const c=show();localStorage.setItem(kC,String(c+1));bad&&(bad.textContent=`${c+1}/10`);}
-const OF=window.fetch;window.fetch=async(...a)=>{const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');if(url.includes('/api/chat')){if(show()>=10){alert('Limit reached (10/month). Please sign in for 100/month.');throw new Error('Anon quota reached');}
-const r=await OF(...a); if(r.ok) inc(); return r;} return OF(...a);}; show();})();
-</script>
+const u=(window._avAuth&&window._avAuth.currentUser)||null;if(u){bad&&(bad.style.display='none');return;}
+const show=()=>{const m=new Date().toISOString().slice(0,7),l=localStorage.getItem(kM);if(l!==m){localStorage.setItem(kM,m);localStorage.setItem(kC,'0');}const c=+(localStorage.getItem(kC)||'0');if(bad){bad.style.display='inline';bad.textContent=`${c}/10`;}return c};
+const inc=()=>{const c=show();localStorage.setItem(kC,String(c+1));bad&&(bad.textContent=`${c+1}/10`)};
+const OF=window.fetch;window.fetch=async(...a)=>{const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');if(url.includes('/api/chat')){if(show()>=10){alert('Limit reached (10/month). Please sign in for 100/month.');throw new Error('Anon quota reached');}const r=await OF(...a);if(!r.ok){let t='';try{t=await r.text()}catch{}alert(`Chat failed (${r.status}) — ${t.slice(0,140)}`);return r;}inc();return r;}return OF(...a)};show()})();
+</script> 
 </body>
 </html>
