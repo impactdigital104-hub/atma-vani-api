@@ -682,5 +682,16 @@ soBtn && soBtn.addEventListener('click', async ()=>{
     }catch(e){}
   });
 </script>
+  <script>
+(() => {
+  const bad=document.getElementById('quotaBadge');
+  const month=new Date().toISOString().slice(0,7);
+  const kC='av_anon_counter',kM='av_anon_lastReset';
+  const last=localStorage.getItem(kM);
+  if(last!==month){ localStorage.setItem(kM,month); localStorage.setItem(kC,'0'); }
+  const count=+(localStorage.getItem(kC)||'0');
+  bad.style.display='inline'; bad.textContent=`${count}/10`;
+})();
+</script>
 </body>
 </html>
