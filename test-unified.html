@@ -609,9 +609,19 @@ function setHeaderForUser(user){
 setHeaderForUser(auth.currentUser);
 
 // Then keep it updated on any change
+  async function ensureUserDocAndBadge(user){
+  const b=document.getElementById('quotaBadge'); if(!user||!b) return;
+  const ref = doc(db,'users',user.uid); const snap = await getDoc(ref);
+  const now = new Date(); const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
+  if(!snap.exists()){ await setDoc(ref,{tier:'free',chatCount:0,lastReset:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString()}); b.style.display='inline'; b.textContent='0/100'; return; }
+  let {tier='free',chatCount=0,lastReset=''} = snap.data()||{};
+  if((lastReset||'').slice(0,7)!==ym){ chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(); await updateDoc(ref,{chatCount,lastReset}); }
+  b.style.display='inline'; b.textContent = (tier==='premium') ? '∞' : `${chatCount}/100`;
+}
 onAuthStateChanged(auth, (user) => {
   console.log("Auth state:", user ? user.email : "signed out");
   setHeaderForUser(user);
+  if (user) ensureUserDocAndBadge(user);
 });
   // Create account (Email/Password)
 const crForm = document.getElementById('createForm');
@@ -687,9 +697,7 @@ soBtn && soBtn.addEventListener('click', async ()=>{
   <script>window.AV_DEV_OK = true;</script>
 <script>
 (()=>{const kC='av_anon_counter',kM='av_anon_lastReset',bad=document.getElementById('quotaBadge');
-const u=(window._avAuth&&window._avAuth.currentUser)||null;if(u){bad&&(bad.style.display='none');return;}
-const show=()=>{const m=new Date().toISOString().slice(0,7),l=localStorage.getItem(kM);if(l!==m){localStorage.setItem(kM,m);localStorage.setItem(kC,'0');}
-let c=+(localStorage.getItem(kC)||'0');if(c>10){c=10;localStorage.setItem(kC,'10');}
+const u=(window._avAuth&&window._avAuth.currentUser)||null;if(u){ return; }
 if(bad){bad.style.display='inline';bad.textContent=`${c}/10`;}return c};
 const inc=()=>{let c=show();if(c<10){c++;localStorage.setItem(kC,String(c));bad&&(bad.textContent=`${c}/10`)}};
 const OF=window.fetch;window.fetch=async(...a)=>{const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');if(url.includes('/api/chat')){
