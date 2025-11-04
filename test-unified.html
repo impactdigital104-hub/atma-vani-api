@@ -575,6 +575,7 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+ import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   // STAGING config (from Firebase console)
   const firebaseConfig = {
     apiKey: "AIzaSyCrAu7GenmKSaiyVkWXjkcshD4twtYUw14",
@@ -586,6 +587,7 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const db = getFirestore(app); window._avDb = db;
   window._avAuth = auth; // for later steps
 
   console.log("Firebase init OK:", app.options.projectId);
