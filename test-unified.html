@@ -618,10 +618,22 @@ setHeaderForUser(auth.currentUser);
   if((lastReset||'').slice(0,7)!==ym){ chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(); await updateDoc(ref,{chatCount,lastReset}); }
   b.style.display='inline'; b.textContent = (tier==='premium') ? '∞' : `${chatCount}/100`;
 }
-onAuthStateChanged(auth, (user) => {
+function enableLoggedInQuotaGuard(){
+  const OF=window.fetch; window.fetch=async(...a)=>{
+    const u=auth.currentUser, b=document.getElementById('quotaBadge');
+    const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||''); if(!u||!url.includes('/api/chat')) return OF(...a);
+    const ref=doc(db,'users',u.uid), now=new Date(), ym=`${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
+    let {tier='free',chatCount=0,lastReset=''}=(await getDoc(ref)).data()||{};
+    if((lastReset||'').slice(0,7)!==ym){ chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(); await updateDoc(ref,{chatCount,lastReset}); }
+    if(tier!=='premium' && chatCount>=100){ alert('Limit reached. Upgrade to Premium for unlimited (manual for now).'); return new Response('{"error":"Free quota reached"}',{status:429,headers:{'content-type':'application/json'}}); }
+    const r=await OF(...a); if(r.ok){ await updateDoc(ref,{chatCount:chatCount+1}); b&&(b.textContent=(tier==='premium')?'∞':`${chatCount+1}/100`);} return r;
+  };
+}
+  onAuthStateChanged(auth, (user) => {
   console.log("Auth state:", user ? user.email : "signed out");
   setHeaderForUser(user);
   if (user) ensureUserDocAndBadge(user);
+    if (user) enableLoggedInQuotaGuard();
 });
   // Create account (Email/Password)
 const crForm = document.getElementById('createForm');
@@ -701,6 +713,7 @@ const u=(window._avAuth&&window._avAuth.currentUser)||null;if(u){ return; }
 if(bad){bad.style.display='inline';bad.textContent=`${c}/10`;}return c};
 const inc=()=>{let c=show();if(c<10){c++;localStorage.setItem(kC,String(c));bad&&(bad.textContent=`${c}/10`)}};
 const OF=window.fetch;window.fetch=async(...a)=>{const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');if(url.includes('/api/chat')){
+    if ((window._avAuth&&window._avAuth.currentUser)) return OF(...a);
   if(show()>=10){alert('Limit reached (10/month). Please sign in for 100/month.');return new Response('{"error":"Anon quota reached"}',{status:429,headers:{'content-type':'application/json'}});}
   if(window.AV_DEV_OK){inc();return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}});}
   const r=await OF(...a);if(!r.ok){let t='';try{t=await r.text()}catch{}alert(`Chat failed (${r.status}) — ${t.slice(0,140)}`);return r;}
