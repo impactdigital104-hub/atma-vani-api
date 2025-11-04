@@ -636,6 +636,7 @@ function enableLoggedInQuotaGuard(){
   setHeaderForUser(user);
   if (user) ensureUserDocAndBadge(user);
     if (user) enableLoggedInQuotaGuard();
+    if (!user) { const b=document.getElementById('quotaBadge'); b&&(b.style.display='inline'); window.avUpdateAnonBadge && window.avUpdateAnonBadge(); }
 });
   // Create account (Email/Password)
 const crForm = document.getElementById('createForm');
@@ -710,16 +711,30 @@ soBtn && soBtn.addEventListener('click', async ()=>{
 </script>
   <script>window.AV_DEV_OK = true;</script>
 <script>
+<script>
 (()=>{const kC='av_anon_counter',kM='av_anon_lastReset',bad=document.getElementById('quotaBadge');
-const u=(window._avAuth&&window._avAuth.currentUser)||null;if(u){ return; }
-if(bad){bad.style.display='inline';bad.textContent=`${c}/10`;}return c};
-const inc=()=>{let c=show();if(c<10){c++;localStorage.setItem(kC,String(c));bad&&(bad.textContent=`${c}/10`)}};
-const OF=window.fetch;window.fetch=async(...a)=>{const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');if(url.includes('/api/chat')){
-    if ((window._avAuth&&window._avAuth.currentUser)) return OF(...a);
-  if(show()>=10){alert('Limit reached (10/month). Please sign in for 100/month.');return new Response('{"error":"Anon quota reached"}',{status:429,headers:{'content-type':'application/json'}});}
-  if(window.AV_DEV_OK){inc();return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}});}
-  const r=await OF(...a);if(!r.ok){let t='';try{t=await r.text()}catch{}alert(`Chat failed (${r.status}) — ${t.slice(0,140)}`);return r;}
-  inc();return r;}return OF(...a)};show()})();
+const u=(window._avAuth&&window._avAuth.currentUser)||null; if(u){ return; }
+
+const show=()=>{const m=new Date().toISOString().slice(0,7),l=localStorage.getItem(kM);
+  if(l!==m){localStorage.setItem(kM,m);localStorage.setItem(kC,'0');}
+  let c=+(localStorage.getItem(kC)||'0'); if(c>10){c=10;localStorage.setItem(kC,'10');}
+  if(bad){bad.style.display='inline';bad.textContent=`${c}/10`;} return c
+};
+
+window.avUpdateAnonBadge = show;  // <-- A) expose refresh function (paste exactly here)
+
+const inc=()=>{let c=show(); if(c<10){ c++; localStorage.setItem(kC,String(c)); bad&&(bad.textContent=`${c}/10`) }};
+const OF=window.fetch; window.fetch=async(...a)=>{ const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');
+  if(url.includes('/api/chat')){
+    if ((window._avAuth&&window._avAuth.currentUser)) return OF(...a); // signed-in → ignore anon wrapper
+    if(show()>=10){ alert('Limit reached (10/month). Please sign in for 100/month.');
+      return new Response('{"error":"Anon quota reached"}',{status:429,headers:{'content-type':'application/json'}}); }
+    if(window.AV_DEV_OK){ inc(); return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}}); }
+    const r=await OF(...a); if(!r.ok){ let t=''; try{t=await r.text()}catch{} alert(`Chat failed (${r.status}) — ${t.slice(0,140)}`); return r; }
+    inc(); return r;
+  }
+  return OF(...a);
+}; show()})();
 </script>
 </body>
 </html>
