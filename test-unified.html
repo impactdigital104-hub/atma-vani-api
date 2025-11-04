@@ -623,9 +623,11 @@ function enableLoggedInQuotaGuard(){
     const u=auth.currentUser, b=document.getElementById('quotaBadge');
     const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||''); if(!u||!url.includes('/api/chat')) return OF(...a);
     const ref=doc(db,'users',u.uid), now=new Date(), ym=`${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
-    let {tier='free',chatCount=0,lastReset=''}=(await getDoc(ref)).data()||{};
+    let snap=await getDoc(ref); if(!snap.exists()) { await setDoc(ref,{tier:'free',chatCount:0,lastReset:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString()}); snap=await getDoc(ref); }
+    let {tier='free',chatCount=0,lastReset=''}=snap.data()||{};
     if((lastReset||'').slice(0,7)!==ym){ chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(); await updateDoc(ref,{chatCount,lastReset}); }
     if(tier!=='premium' && chatCount>=100){ alert('Limit reached. Upgrade to Premium for unlimited (manual for now).'); return new Response('{"error":"Free quota reached"}',{status:429,headers:{'content-type':'application/json'}}); }
+    if(window.AV_DEV_OK){ await updateDoc(ref,{chatCount:chatCount+1}); b&&(b.textContent=(tier==='premium')?'∞':`${chatCount+1}/100`); return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}}); }
     const r=await OF(...a); if(r.ok){ await updateDoc(ref,{chatCount:chatCount+1}); b&&(b.textContent=(tier==='premium')?'∞':`${chatCount+1}/100`);} return r;
   };
 }
