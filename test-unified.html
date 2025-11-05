@@ -511,9 +511,6 @@
         <input id="siEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
         <input id="siPass" type="password" placeholder="Password" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
         <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Sign in</button>
-        <button id="btnGoogleCr" type="button" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#ffffff;color:#111827;font-weight:600">
-  Continue with Google
-</button>
         <button id="btnGoogle" type="button" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#ffffff;color:#111827;font-weight:600">
   Continue with Google
 </button>
@@ -525,6 +522,9 @@
         <input id="crEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
         <input id="crPass" type="password" placeholder="Password (6+ chars)" minlength="6" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
         <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Create account</button>
+        <button id="btnGoogleCr" type="button" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#ffffff;color:#111827;font-weight:600">
+  Continue with Google
+</button>
         <div id="crErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
       </form>
     </div>
@@ -594,7 +594,7 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
 <!-- Firebase SDK + init (single module block) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
  import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   // STAGING config (from Firebase console)
   const firebaseConfig = {
@@ -713,6 +713,10 @@ soBtn && soBtn.addEventListener('click', async ()=>{
     alert('Sign out failed: ' + (e?.message || e));
   }
 });
+  // Google Sign-In (works from both tabs)
+const go=async()=>{try{const r=await signInWithPopup(auth,new GoogleAuthProvider());const m=document.getElementById('authModal');if(m){m.hidden=true;m.style.display='';}console.log('Google sign-in OK:',r.user?.email);}catch(e){console.error('Google sign-in error:',e?.code,e?.message);alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);}};
+document.getElementById('btnGoogle')?.addEventListener('click',go);
+document.getElementById('btnGoogleCr')?.addEventListener('click',go);
 </script>
   <script>
   // One-shot header sync after page load
