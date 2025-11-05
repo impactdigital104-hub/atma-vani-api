@@ -576,25 +576,10 @@ const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.displ
     showSignIn();
   });
 </script>
-<script type="module">
-  const go = async () => {
-    try{
-      const { getAuth, GoogleAuthProvider, signInWithPopup } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
-      const res = await signInWithPopup(getAuth(), new GoogleAuthProvider());
-      const m = document.getElementById('authModal'); if (m){ m.hidden = true; m.style.display=''; }
-      console.log('Google sign-in OK:', res.user?.email);
-    }catch(e){
-      console.error('Google sign-in error:', e?.code, e?.message);
-      alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
-    }
-  };
-  document.getElementById('btnGoogle')?.addEventListener('click', go);
-  document.getElementById('btnGoogleCr')?.addEventListener('click', go);
-</script>
 <!-- Firebase SDK + init (single module block) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+ import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
  import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   // STAGING config (from Firebase console)
   const firebaseConfig = {
@@ -713,17 +698,25 @@ soBtn && soBtn.addEventListener('click', async ()=>{
     alert('Sign out failed: ' + (e?.message || e));
   }
 });
-  // Google Sign-In (works from both tabs)
-// Google Sign-In (guarded)
+ // Google Sign-In (guarded + redirect fallback)
 let _gBusy=false;
 const go=async()=>{ if(_gBusy) return; _gBusy=true;
   const b1=document.getElementById('btnGoogle'), b2=document.getElementById('btnGoogleCr');
   b1&&(b1.disabled=true); b2&&(b2.disabled=true);
-  try{ const r=await signInWithPopup(auth,new GoogleAuthProvider());
-       const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
-       console.log('Google sign-in OK:',r.user?.email);
-  }catch(e){ console.error('Google sign-in error:',e?.code,e?.message); alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`); }
-  _gBusy=false; b1&&(b1.disabled=false); b2&&(b2.disabled=false);
+  try{
+    const r=await signInWithPopup(auth,new GoogleAuthProvider());
+    const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
+    console.log('Google OK:',r.user?.email);
+  }catch(e){
+    console.error('Google error:',e?.code,e?.message);
+    if(e?.code==='auth/cancelled-popup-request' || e?.code==='auth/popup-closed-by-user'){
+      await signInWithRedirect(auth,new GoogleAuthProvider());
+      return;
+    }
+    alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
+  } finally {
+    _gBusy=false; b1&&(b1.disabled=false); b2&&(b2.disabled=false);
+  }
 };
 document.getElementById('btnGoogle')?.addEventListener('click',go);
 document.getElementById('btnGoogleCr')?.addEventListener('click',go);
