@@ -714,7 +714,17 @@ soBtn && soBtn.addEventListener('click', async ()=>{
   }
 });
   // Google Sign-In (works from both tabs)
-const go=async()=>{try{const r=await signInWithPopup(auth,new GoogleAuthProvider());const m=document.getElementById('authModal');if(m){m.hidden=true;m.style.display='';}console.log('Google sign-in OK:',r.user?.email);}catch(e){console.error('Google sign-in error:',e?.code,e?.message);alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);}};
+// Google Sign-In (guarded)
+let _gBusy=false;
+const go=async()=>{ if(_gBusy) return; _gBusy=true;
+  const b1=document.getElementById('btnGoogle'), b2=document.getElementById('btnGoogleCr');
+  b1&&(b1.disabled=true); b2&&(b2.disabled=true);
+  try{ const r=await signInWithPopup(auth,new GoogleAuthProvider());
+       const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
+       console.log('Google sign-in OK:',r.user?.email);
+  }catch(e){ console.error('Google sign-in error:',e?.code,e?.message); alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`); }
+  _gBusy=false; b1&&(b1.disabled=false); b2&&(b2.disabled=false);
+};
 document.getElementById('btnGoogle')?.addEventListener('click',go);
 document.getElementById('btnGoogleCr')?.addEventListener('click',go);
 </script>
