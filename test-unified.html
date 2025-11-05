@@ -803,5 +803,25 @@ window.fetch=async(...a)=>{
 show();
 })();
 </script>
+  <!-- Tiny modal (global) -->
+<div id="tinyModal" style="position:fixed;inset:0;display:none;z-index:100000;background:rgba(0,0,0,.45)">
+  <div style="margin:auto;background:#111827;color:#fff;max-width:420px;width:90%;border-radius:14px;padding:14px 16px;box-shadow:0 12px 28px rgba(0,0,0,.35)">
+    <div id="tinyModalMsg" style="white-space:pre-wrap;line-height:1.45"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+      <button id="tinyModalOk" style="padding:.5rem .75rem;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#111827;font-weight:600">OK</button>
+    </div>
+  </div>
+</div>
+  <script>
+  (function(){
+    const wrap=document.getElementById('tinyModal'), msg=document.getElementById('tinyModalMsg'), ok=document.getElementById('tinyModalOk');
+    function showModal(text){ msg.textContent=String(text||''); wrap.style.display='grid'; }
+    function hide(){ wrap.style.display='none'; }
+    ok.addEventListener('click',hide); wrap.addEventListener('click',e=>{ if(e.target===wrap) hide(); });
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape') hide(); });
+    window.showModal = showModal;
+    window.alert = showModal; // redirect all alerts here
+  })();
+</script>
 </body>
 </html>
