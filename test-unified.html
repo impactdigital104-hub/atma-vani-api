@@ -226,10 +226,10 @@
     const speakConciseToggle = $('#speakConcise');
 
     let lastTextUser = '';
-   // ===== TEXT CHAT — Send button handler (REPLACED 3C final) =====
+ // ===== TEXT CHAT — Send button handler (3C final) =====
 txt.send.addEventListener('click', async ()=>{
-  /* 3C busy start — Send (v2: supports <input> & <button>) */
-  const _btn = document.querySelector('#btnSendText');
+  /* 3C busy start — Send (use txt.send directly; supports <button>/<input>) */
+  const _btn = txt.send;
   if (_btn) {
     if (!_btn.dataset.busy) { _btn.dataset.prev = ('value' in _btn) ? _btn.value : _btn.innerHTML; }
     _btn.disabled = true; _btn.dataset.busy = '1';
@@ -256,6 +256,36 @@ txt.send.addEventListener('click', async ()=>{
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ message })
     });
+    if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
+    const data = await r.json();
+    const reply = data?.reply || '';
+    txt.reply.textContent = reply;
+    txt.status.textContent = 'Status: reply received.';
+    txt.speakFullBtn.disabled = !reply;
+
+    if (txt.autoSpeak.checked && reply) {
+      const speechText = await decideSpeechText(messageRaw, reply, speakConciseToggle.checked);
+      const engine = currentEngine();
+      const voice = chooseVoice(engine, lang);
+      await speak(speechText, engine, voice);
+    }
+  } catch (e) {
+    console.error(e);
+    txt.status.textContent = 'Status: failed. Please retry.';
+    alert(`Chat error: ${e.message}`);
+  } finally {
+    /* 3C busy end — Send */
+    const _btn2 = txt.send;
+    if (_btn2) {
+      _btn2.disabled = false; _btn2.dataset.busy = '';
+      const prev = _btn2.dataset.prev;
+      if (prev != null) {
+        if ('value' in _btn2) { _btn2.value = prev; } else { _btn2.innerHTML = prev; }
+        _btn2.dataset.prev = '';
+      }
+    }
+  }
+});
     if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
     const data = await r.json();
     const reply = data?.reply || '';
@@ -717,55 +747,63 @@ siForm && siForm.addEventListener('submit', async (e)=>{
     siErr.textContent = msg;
   }
 });
-  // Sign out (header button)
+  // ===== AUTH — Sign out (header button) =====
 const soBtn = document.getElementById('authSignOut');
 soBtn && soBtn.addEventListener('click', async ()=>{
   try {
-    await signOut(auth);              // Firebase signs you out
-    setHeaderForUser(null);           // update header immediately
-    alert('Signed out');              // small confirmation
- 
-                   // 3C busy start — Google (C)
-if (b1 && !b1.dataset.prev) b1.dataset.prev = b1.innerHTML;
-if (b2 && !b2.dataset.prev) b2.dataset.prev = b2.innerHTML;
-if (b1) b1.innerHTML = '• • •';
-if (b2) b2.innerHTML = '• • •';
-  b1&&(b1.disabled=true); b2&&(b2.disabled=true);
-  try{} catch(e){
-  console.error('Google error:', e?.code, e?.message);
-  if (e?.code === 'auth/cancelled-popup-request' || e?.code === 'auth/popup-closed-by-user'){
-    await signInWithRedirect(auth, new GoogleAuthProvider());
-    return;
+    await signOut(auth);
+    setHeaderForUser(null);
+    alert('Signed out');
+  } catch (e) {
+    console.error('Sign out error:', e);
+    alert('Could not sign out. Please try again.');
   }
-  alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
-} finally {
-  // 3C busy end — Google (D v2)
-  const b1=document.getElementById('btnGoogle'), b2=document.getElementById('btnGoogleCr');
-  const restore=(b)=>{ if(!b) return; b.disabled=false;
-    const prev=b.dataset.prev;
-    if (prev!=null) { if ('value' in b) b.value=prev; else b.innerHTML=prev; b.dataset.prev=''; }
-  };
-  restore(b1); restore(b2); _gBusy=false;
-}
-};
-document.getElementById('btnGoogle')?.addEventListener('click', go);
-document.getElementById('btnGoogleCr')?.addEventListener('click', go);
-    const r=await signInWithPopup(auth,new GoogleAuthProvider());
-    const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
-    console.log('Google OK:',r.user?.email);
-  }catch(e){
-    console.error('Google error:',e?.code,e?.message);
-    if(e?.code==='auth/cancelled-popup-request' || e?.code==='auth/popup-closed-by-user'){
-      await signInWithRedirect(auth,new GoogleAuthProvider());
+});
+
+// ===== AUTH — Google Sign-In (popup + redirect) with 3C busy states =====
+let _gBusy = false;
+const go = async () => {
+  if (_gBusy) return; _gBusy = true;
+
+  const b1 = document.getElementById('btnGoogle');
+  const b2 = document.getElementById('btnGoogleCr');
+
+  /* 3C busy start — Google (supports <input> & <button>) */
+  if (b1 && !b1.dataset.prev) b1.dataset.prev = ('value' in b1) ? b1.value : b1.innerHTML;
+  if (b2 && !b2.dataset.prev) b2.dataset.prev = ('value' in b2) ? b2.value : b2.innerHTML;
+  if (b1) { if ('value' in b1) b1.value = '• • •'; else b1.innerHTML = '• • •'; }
+  if (b2) { if ('value' in b2) b2.value = '• • •'; else b2.innerHTML = '• • •'; }
+  b1 && (b1.disabled = true); b2 && (b2.disabled = true);
+
+  try {
+    // Try popup first
+    const r = await signInWithPopup(auth, new GoogleAuthProvider());
+    const m = document.getElementById('authModal'); if (m) { m.hidden = true; m.style.display = ''; }
+    console.log('Google OK:', r.user?.email);
+  } catch (e) {
+    console.error('Google error:', e?.code, e?.message);
+    if (e?.code === 'auth/cancelled-popup-request' || e?.code === 'auth/popup-closed-by-user') {
+      await signInWithRedirect(auth, new GoogleAuthProvider());
       return;
     }
     alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
   } finally {
-    _gBusy=false; b1&&(b1.disabled=false); b2&&(b2.disabled=false);
+    // 3C busy end — Google
+    const restore = (b) => {
+      if (!b) return;
+      b.disabled = false;
+      const prev = b.dataset.prev;
+      if (prev != null) {
+        if ('value' in b) b.value = prev; else b.innerHTML = prev;
+        b.dataset.prev = '';
+      }
+    };
+    restore(b1); restore(b2); _gBusy = false;
   }
 };
-document.getElementById('btnGoogle')?.addEventListener('click',go);
-document.getElementById('btnGoogleCr')?.addEventListener('click',go);
+
+document.getElementById('btnGoogle')?.addEventListener('click', go);
+document.getElementById('btnGoogleCr')?.addEventListener('click', go);
 </script>
   <script>
   // One-shot header sync after page load
