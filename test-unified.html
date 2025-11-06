@@ -227,6 +227,13 @@
 
     let lastTextUser = '';
     txt.send.addEventListener('click', async ()=>{
+      // 3C busy start — Send (A)
+const _btn = document.querySelector('#btnSendText');
+if (_btn) {
+  if (!_btn.dataset.busy) { _btn.dataset.prev = _btn.innerHTML; }
+  _btn.disabled = true; _btn.dataset.busy = '1';
+  _btn.innerHTML = '• • •';
+}
       const messageRaw = (txt.input.value || '').trim();
       if (!messageRaw) { txt.input.focus(); return; }
       lastTextUser = messageRaw;
@@ -264,6 +271,11 @@
         txt.status.textContent = 'Status: failed. Please retry.';
         alert(`Chat error: ${e.message}`);
       }
+      // 3C busy end — Send (B)
+finally {
+  const _btn = document.querySelector('#btnSendText');
+  if (_btn) { _btn.disabled = false; _btn.dataset.busy=''; _btn.innerHTML = _btn.dataset.prev || _btn.innerHTML; }
+}
     });
 
     txt.speakFullBtn.addEventListener('click', async ()=>{
@@ -704,16 +716,30 @@ soBtn && soBtn.addEventListener('click', async ()=>{
     await signOut(auth);              // Firebase signs you out
     setHeaderForUser(null);           // update header immediately
     alert('Signed out');              // small confirmation
-  } catch (e) {
-    alert('Sign out failed: ' + (e?.message || e));
-  }
-});
- // Google Sign-In (guarded + redirect fallback)
-let _gBusy=false;
-const go=async()=>{ if(_gBusy) return; _gBusy=true;
-  const b1=document.getElementById('btnGoogle'), b2=document.getElementById('btnGoogleCr');
+ 
+                   // 3C busy start — Google (C)
+if (b1 && !b1.dataset.prev) b1.dataset.prev = b1.innerHTML;
+if (b2 && !b2.dataset.prev) b2.dataset.prev = b2.innerHTML;
+if (b1) b1.innerHTML = '• • •';
+if (b2) b2.innerHTML = '• • •';
   b1&&(b1.disabled=true); b2&&(b2.disabled=true);
-  try{
+  try{} catch(e){
+  console.error('Google error:', e?.code, e?.message);
+  if (e?.code === 'auth/cancelled-popup-request' || e?.code === 'auth/popup-closed-by-user'){
+    await signInWithRedirect(auth, new GoogleAuthProvider());
+    return;
+  }
+  alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
+} finally {
+  // 3C busy end — Google (D)
+  const b1 = document.getElementById('btnGoogle'), b2 = document.getElementById('btnGoogleCr');
+  if (b1) { b1.disabled = false; b1.innerHTML = b1.dataset.prev || b1.innerHTML; b1.dataset.prev = ''; }
+  if (b2) { b2.disabled = false; b2.innerHTML = b2.dataset.prev || b2.innerHTML; b2.dataset.prev = ''; }
+  _gBusy = false;
+}
+};
+document.getElementById('btnGoogle')?.addEventListener('click', go);
+document.getElementById('btnGoogleCr')?.addEventListener('click', go);
     const r=await signInWithPopup(auth,new GoogleAuthProvider());
     const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
     console.log('Google OK:',r.user?.email);
