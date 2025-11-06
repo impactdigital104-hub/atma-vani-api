@@ -33,18 +33,19 @@
   </style>
 </head>
 <body>
-  <!-- Auth: trigger button (no logic yet) -->
-<button id="authTrigger" type="button" aria-haspopup="dialog" aria-controls="authModal"
-  style="padding:.5rem .75rem;border:1px solid var(--border);background:var(--panel);border-radius:9999px;font-size:14px;cursor:pointer;position:fixed;top:12px;right:12px;z-index:9999">
-  Sign in / Create account
-</button>
-   <span id="quotaBadge"
-  style="position:fixed;top:12px;right:120px;z-index:9999;font-size:12px;opacity:.85;display:none"
-  aria-live="polite">—/10</span>
+  <!-- Auth header controls -->
+  <button id="authTrigger" type="button" aria-haspopup="dialog" aria-controls="authModal"
+    style="padding:.5rem .75rem;border:1px solid var(--border);background:#111827;border-radius:9999px;font-size:14px;cursor:pointer;position:fixed;top:12px;right:12px;z-index:9999">
+    Sign in / Create account
+  </button>
+  <span id="quotaBadge"
+    style="position:fixed;top:12px;right:160px;z-index:9999;font-size:12px;opacity:.85;display:none"
+    aria-live="polite">—/10</span>
   <button id="authSignOut" type="button"
-  style="padding:.5rem .75rem;border:1px solid var(--border);background:#1b2030;border-radius:9999px;font-size:14px;cursor:pointer;position:fixed;top:12px;right:180px;z-index:9999;display:none">
-  Sign out
-</button>
+    style="padding:.5rem .75rem;border:1px solid var(--border);background:#1b2030;border-radius:9999px;font-size:14px;cursor:pointer;position:fixed;top:12px;right:260px;z-index:9999;display:none">
+    Sign out
+  </button>
+
   <div class="wrap">
     <h1>Atma Vani — Unified (Text + Voice)</h1>
     <p class="sub">Auto-detects English/Hindi, speaks a concise summary (~45s) by default, and strips Markdown so the voice doesn’t read asterisks.</p>
@@ -136,8 +137,8 @@
     </div>
   </div>
 
+  <!-- ===== App Scripts (chat, voice, tts, stt) ===== -->
   <script>
-    // ===== Utilities =====
     const $ = (s) => document.querySelector(s);
     async function safeJson(r){ try{ return await r.json() } catch { return null } }
     function prettyBytes(b){ if(!b) return '0 KB'; const u=['B','KB','MB','GB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i] }
@@ -146,17 +147,17 @@
     // Strip Markdown so TTS doesn't read **, *, #, links, etc.
     function stripMarkdownForSpeech(s = "") {
       let t = String(s);
-      t = t.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');      // images -> alt
-      t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');       // links -> text
-      t = t.replace(/`{3}[\s\S]*?`{3}/g, '');              // code fences
-      t = t.replace(/`([^`]+)`/g, '$1');                  // inline code
-      t = t.replace(/(\*\*|__)(.*?)\1/g, '$2');           // **bold** __bold__
-      t = t.replace(/(\*|_)(.*?)\1/g, '$2');              // *em* _em_
-      t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '');           // headings
-      t = t.replace(/^\s{0,3}>\s?/gm, '');                // blockquotes
-      t = t.replace(/^\s*[-*+]\s+/gm, '');                // bullets
-      t = t.replace(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/gm, '');// hr
-      t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n'); // whitespace
+      t = t.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');
+      t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+      t = t.replace(/`{3}[\s\S]*?`{3}/g, '');
+      t = t.replace(/`([^`]+)`/g, '$1');
+      t = t.replace(/(\*\*|__)(.*?)\1/g, '$2');
+      t = t.replace(/(\*|_)(.*?)\1/g, '$2');
+      t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '');
+      t = t.replace(/^\s{0,3}>\s?/gm, '');
+      t = t.replace(/^\s*[-*+]\s+/gm, '');
+      t = t.replace(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/gm, '');
+      t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
       return t.trim();
     }
 
@@ -171,28 +172,19 @@
     function chooseVoice(engine, lang){
       const map = {
         google: { 'en-IN':'en-IN-Neural2-A', 'hi-IN':'hi-IN-Neural2-A' },
-        openai: { 'en-IN':'alloy',           'hi-IN':'alloy' }, // OpenAI will still speak Hindi text decently
+        openai: { 'en-IN':'alloy', 'hi-IN':'alloy' },
         azure:  { 'en-IN':'en-IN-NeerjaNeural', 'hi-IN':'hi-IN-SwaraNeural' },
-        sarvam: { 'en-IN':'Abhilash',        'hi-IN':'Abhilash' }, // adjust to your fav Sarvam voices
-        elevenlabs: { 'en-IN':'21m00Tcm4TlvDq8ikWAM', 'hi-IN':'21m00Tcm4TlvDq8ikWAM' } // demo voice id
+        sarvam: { 'en-IN':'Abhilash', 'hi-IN':'Abhilash' },
+        elevenlabs: { 'en-IN':'21m00Tcm4TlvDq8ikWAM', 'hi-IN':'21m00Tcm4TlvDq8ikWAM' }
       };
       const byEngine = map[engine] || map.google;
       return byEngine[lang] || byEngine['en-IN'];
     }
 
-    // Heuristic: bypass concise speech (recitations)
-    const RECITATION_KEYWORDS = [
-      'mantra','stotra','stotram','stotras','stuti','bhajan','bhajans',
-      'aarti','aartī','arati','puja','pooja','pūjā','sloka','shloka','śloka',
-      'chant','recite','repeat after me','path','paath'
-    ];
-    function asksForRecitation(text=''){
-      const t = text.toLowerCase();
-      return RECITATION_KEYWORDS.some(k => t.includes(k));
-    }
+    const RECITATION_KEYWORDS = ['mantra','stotra','stotram','stotras','stuti','bhajan','bhajans','aarti','aartī','arati','puja','pooja','pūjā','sloka','shloka','śloka','chant','recite','repeat after me','path','paath'];
+    function asksForRecitation(text=''){ const t=text.toLowerCase(); return RECITATION_KEYWORDS.some(k=>t.includes(k)); }
     function isAlreadyShort(text=''){ return (text.trim().length <= 600); }
 
-    // Build concise summary via /api/chat (asks for PLAIN TEXT)
     async function buildConciseSummary(userMsg, fullReply){
       const ask = [
         "You are preparing a SPOKEN summary for the user.",
@@ -201,17 +193,13 @@
         "If the user explicitly asked to recite a mantra, stotram, bhajan, aarti, puja, or similar ritual text, DO NOT SUMMARIZE: return the full text for recitation."
       ].join(' ');
       const payload = `${ask}\n\nUser message:\n${userMsg}\n\nAssistant reply:\n${fullReply}`;
-      const r = await fetch('/api/chat', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ message: payload })
-      });
+      const r = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: payload }) });
       if (!r.ok) { const e = await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
       const data = await r.json();
       return data?.reply || '';
     }
 
-    // ===== Engine selector =====
-    const engineSelect = $('#engine'); // openai | google | azure | sarvam | elevenlabs
+    const engineSelect = $('#engine');
     function currentEngine(){ return engineSelect.value || 'openai'; }
 
     // ===== TEXT CHAT =====
@@ -226,102 +214,45 @@
     const speakConciseToggle = $('#speakConcise');
 
     let lastTextUser = '';
- // ===== TEXT CHAT — Send button handler (3C final v4) =====
-txt.send.addEventListener('click', async ()=>{
-  // 1) Read & validate first (do NOT disable yet)
-  const messageRaw = (txt.input.value || '').trim();
-  if (!messageRaw) { txt.input.focus(); return; }
-  lastTextUser = messageRaw;
+    txt.send.addEventListener('click', async ()=>{
+      const messageRaw = (txt.input.value || '').trim();
+      if (!messageRaw) { txt.input.focus(); return; }
+      lastTextUser = messageRaw;
 
-  // 2) Now go busy (dots + disable) using txt.send directly
-  const _btn = txt.send;
-  if (_btn) {
-    if (!_btn.dataset.busy) { _btn.dataset.prev = ('value' in _btn) ? _btn.value : _btn.innerHTML; }
-    _btn.disabled = true; _btn.dataset.busy = '1';
-    if ('value' in _btn) { _btn.value = '• • •'; } else { _btn.innerHTML = '• • •'; }
-  }
+      const lang = detectLang(messageRaw);
+      const langHint = (lang === 'hi-IN')
+        ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
+        : " Please reply in English. Please return PLAIN TEXT (no Markdown).";
+      const message = messageRaw + langHint;
 
-  // Language hint so reply matches user language
-  const lang = detectLang(messageRaw);
-  const langHint = (lang === 'hi-IN')
-    ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
-    : " Please reply in English. Please return PLAIN TEXT (no Markdown).";
-  const message = messageRaw + langHint;
+      txt.status.textContent = 'Status: thinking…';
+      txt.reply.textContent = '';
+      txt.speakFullBtn.disabled = true;
+      try {
+        const r = await fetch('/api/chat',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ message })
+        });
+        if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
+        const data = await r.json();
+        const reply = data?.reply || '';
+        txt.reply.textContent = reply;
+        txt.status.textContent = 'Status: reply received.';
+        txt.speakFullBtn.disabled = !reply;
 
-  txt.status.textContent = 'Status: thinking…';
-  txt.reply.textContent = '';
-  txt.speakFullBtn.disabled = true;
-
-  try {
-    const r = await fetch('/api/chat', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ message })
+        if (txt.autoSpeak.checked && reply) {
+          const speechText = await decideSpeechText(messageRaw, reply, speakConciseToggle.checked);
+          const engine = currentEngine();
+          const voice = chooseVoice(engine, lang);
+          await speak(speechText, engine, voice);
+        }
+      } catch (e) {
+        console.error(e);
+        txt.status.textContent = 'Status: failed. Please retry.';
+        alert(`Chat error: ${e.message}`);
+      }
     });
-    if (!r.ok) {
-      const e = await safeJson(r);
-      throw new Error(e?.error || `HTTP ${r.status}`);
-    }
-    const data = await r.json();
-    const reply = data?.reply || '';
 
-    txt.reply.textContent = reply;
-    txt.status.textContent = 'Status: reply received.';
-    txt.speakFullBtn.disabled = !reply;
-
-    if (txt.autoSpeak.checked && reply) {
-      const speechText = await decideSpeechText(messageRaw, reply, speakConciseToggle.checked);
-      const engine = currentEngine();
-      const voice = chooseVoice(engine, lang);
-      await speak(speechText, engine, voice);
-    }
-  } catch (e) {
-    console.error(e);
-    txt.status.textContent = 'Status: failed. Please retry.';
-    alert(`Chat error: ${e.message}`);
-  } finally {
-    // Always restore the button, even on early errors
-    const _btn2 = txt.send;
-    if (_btn2) {
-      _btn2.disabled = false; _btn2.dataset.busy = '';
-      const prev = _btn2.dataset.prev;
-      if (prev != null) {
-        if ('value' in _btn2) { _btn2.value = prev; } else { _btn2.innerHTML = prev; }
-        _btn2.dataset.prev = '';
-      }
-    }
-  }
-});
-    if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
-    const data = await r.json();
-    const reply = data?.reply || '';
-    txt.reply.textContent = reply;
-    txt.status.textContent = 'Status: reply received.';
-    txt.speakFullBtn.disabled = !reply;
-
-    if (txt.autoSpeak.checked && reply) {
-      const speechText = await decideSpeechText(messageRaw, reply, speakConciseToggle.checked);
-      const engine = currentEngine();
-      const voice = chooseVoice(engine, lang);
-      await speak(speechText, engine, voice);
-    }
-  } catch (e) {
-    console.error(e);
-    txt.status.textContent = 'Status: failed. Please retry.';
-    alert(`Chat error: ${e.message}`);
-  } finally {
-    /* 3C busy end — Send (v2) */
-    const _btn2 = document.querySelector('#btnSendText');
-    if (_btn2) {
-      _btn2.disabled = false; _btn2.dataset.busy = '';
-      const prev = _btn2.dataset.prev;
-      if (prev != null) {
-        if ('value' in _btn2) { _btn2.value = prev; } else { _btn2.innerHTML = prev; }
-        _btn2.dataset.prev = '';
-      }
-    }
-  }
-});
     txt.speakFullBtn.addEventListener('click', async ()=>{
       const reply = txt.reply.textContent.trim();
       if (!reply) return;
@@ -434,7 +365,6 @@ txt.send.addEventListener('click', async ()=>{
     let lastVoiceUser = '';
     async function sendVoiceToChat(text){
       lastVoiceUser = text;
-      // detect language of user's speech and ask model to answer in that language
       const lang = detectLang(text);
       const langHint = (lang === 'hi-IN')
         ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
@@ -471,7 +401,6 @@ txt.send.addEventListener('click', async ()=>{
       await speak(reply, engine, voice);
     });
 
-    // ===== Concise vs Full speech decision =====
     async function decideSpeechText(userMsg, fullReply, preferConcise){
       if (asksForRecitation(userMsg) || isAlreadyShort(fullReply)) return fullReply;
       if (userMsg.toLowerCase().includes('detailed spoken reply') || userMsg.toLowerCase().includes('speak the full')) {
@@ -489,7 +418,6 @@ txt.send.addEventListener('click', async ()=>{
       return fullReply;
     }
 
-    // ===== Shared TTS player =====
     const tts = { status: $('#speakStatus'), player: $('#ttsPlayer'),
                   again: $('#btnSpeakAgain'), againFull: $('#btnSpeakAgainFull') };
 
@@ -513,24 +441,16 @@ txt.send.addEventListener('click', async ()=>{
       await speak(reply, engine, voice);
     });
 
-    // ===== Speak (calls /api/tts) — now strips Markdown before sending =====
     async function speak(text, engine, voice){
       tts.status.textContent='Status: generating audio…';
       tts.player.classList.add('hidden'); tts.player.src='';
       tts.again.disabled = true; tts.againFull.disabled = true;
 
-      const cleanedText = stripMarkdownForSpeech(text); // <= important
+      const cleanedText = stripMarkdownForSpeech(text);
 
       try{
-        const r = await fetch('/api/tts',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ text: cleanedText, engine, voice })
-        });
-        if(!r.ok){
-          const err = await safeJson(r);
-          throw new Error(err?.error || `HTTP ${r.status}`);
-        }
+        const r = await fetch('/api/tts',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: cleanedText, engine, voice }) });
+        if(!r.ok){ const err = await safeJson(r); throw new Error(err?.error || `HTTP ${r.status}`); }
         const blob = await r.blob();
         const url = URL.createObjectURL(blob);
         tts.player.src = url;
@@ -546,362 +466,332 @@ txt.send.addEventListener('click', async ()=>{
       }
     }
   </script>
-<!-- Auth: minimal modal shell (single close button, clean reset) -->
-<div id="authModal" hidden
-  style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;display:none">
-  <div style="position:relative;margin:auto;width:90%;max-width:420px;background:#fff;border-radius:16px;padding:16px 16px 20px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
-    <!-- Close -->
-    <button id="authClose" aria-label="Close"
-      style="position:absolute;top:10px;right:10px;padding:.4rem .55rem;border-radius:9999px;border:1px solid #111827;background:#111827;color:#fff;font-weight:700;line-height:1">✕</button>
 
-    <!-- Header tabs -->
-    <div style="display:flex;gap:10px;align-items:center;justify-content:flex-start;margin:6px 36px 12px 6px">
-      <button id="tabSignIn" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Sign in</button>
-      <button id="tabCreate" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Create account</button>
-    </div>
+  <!-- Auth modal -->
+  <div id="authModal" hidden
+    style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;display:none">
+    <div style="position:relative;margin:auto;width:90%;max-width:420px;background:#fff;border-radius:16px;padding:16px 16px 20px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+      <button id="authClose" aria-label="Close"
+        style="position:absolute;top:10px;right:10px;padding:.4rem .55rem;border-radius:9999px;border:1px solid #111827;background:#111827;color:#fff;font-weight:700;line-height:1">✕</button>
 
-    <!-- Body (forms) -->
-    <div id="authBody" style="min-height:120px">
-      <!-- Sign in (default) -->
-      <form id="signInForm" style="display:grid;gap:8px">
-        <input id="siEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-        <input id="siPass" type="password" placeholder="Password" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-        <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Sign in</button>
-        <button id="btnGoogle" type="button" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#ffffff;color:#111827;font-weight:600">
-  Continue with Google
-</button>
-        <div id="siErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
-      </form>
+      <div style="display:flex;gap:10px;align-items:center;justify-content:flex-start;margin:6px 36px 12px 6px">
+        <button id="tabSignIn" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Sign in</button>
+        <button id="tabCreate" style="flex:1;padding:.6rem .8rem;border-radius:9999px;border:1px solid #E5E7EB;background:#111827;color:#fff;font-weight:600">Create account</button>
+      </div>
 
-      <!-- Create account -->
-      <form id="createForm" style="display:none;gap:8px">
-        <input id="crEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-        <input id="crPass" type="password" placeholder="Password (6+ chars)" minlength="6" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
-        <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Create account</button>
-        <button id="btnGoogleCr" type="button" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#ffffff;color:#111827;font-weight:600">
-  Continue with Google
-</button>
-        <div id="crErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
-      </form>
+      <div id="authBody" style="min-height:120px">
+        <!-- Sign in -->
+        <form id="signInForm" style="display:grid;gap:8px">
+          <input id="siEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+          <input id="siPass" type="password" placeholder="Password" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+          <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Sign in</button>
+          <!-- Google sign-in button -->
+          <button id="btnGoogle" type="button" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#ffffff;color:#111827;font-weight:600">Continue with Google</button>
+          <div id="siErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
+        </form>
+
+        <!-- Create account -->
+        <form id="createForm" style="display:none;gap:8px">
+          <input id="crEmail" type="email" placeholder="Email" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+          <input id="crPass" type="password" placeholder="Password (6+ chars)" minlength="6" required style="padding:.6rem .8rem;border:1px solid #E5E7EB;border-radius:10px">
+          <button type="submit" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#111827;color:#fff;font-weight:600">Create account</button>
+          <!-- Google create button -->
+          <button id="btnGoogleCr" type="button" style="padding:.6rem .8rem;border-radius:10px;border:1px solid #111827;background:#ffffff;color:#111827;font-weight:600">Continue with Google</button>
+          <div id="crErr" style="color:#b91c1c;font-size:12px;min-height:16px"></div>
+        </form>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Modal open/close (non-module) -->
-<script>
-  const m = document.getElementById('authModal');
-  const t = document.getElementById('authTrigger'); // header button you added earlier
-  const c = document.getElementById('authClose');
+  <!-- Modal open/close -->
+  <script>
+    const m = document.getElementById('authModal');
+    const t = document.getElementById('authTrigger');
+    const c = document.getElementById('authClose');
 
- function openAuth(){
-  if(!m) return;
-  m.hidden = false;
-  m.style.display = 'grid';
-  // default view = Sign in
-  const fIn = document.getElementById('signInForm');
-  const fCr = document.getElementById('createForm');
-  if (fIn && fCr){ fIn.style.display='grid'; fCr.style.display='none'; }
-}
-  function closeAuth(){
-    if(!m) return;
-    m.hidden = true;
-    m.style.display = '';
-  }
-
-  t && t.addEventListener('click', openAuth);
-  c && c.addEventListener('click', closeAuth);
-  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAuth(); });
-  m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
-</script>
-
-<!-- Tabs: toggle forms (non-module) -->
-<script>
-  window.addEventListener('DOMContentLoaded', ()=>{
-    const tabIn = document.getElementById('tabSignIn');
-    const tabCr = document.getElementById('tabCreate');
-    const fIn   = document.getElementById('signInForm');
-    const fCr   = document.getElementById('createForm');
-
-const showSignIn = ()=>{ if(fIn&&fCr){ fIn.style.display='grid'; fCr.style.display='none'; } };
-const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.display='grid'; } };
-
-    tabIn && tabIn.addEventListener('click', showSignIn);
-    tabCr && tabCr.addEventListener('click', showCreate);
-
-    // Set default view on page load (defensive)
-    showSignIn();
-  });
-</script>
-<!-- Firebase SDK + init (single module block) -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
- import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
- import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  // STAGING config (from Firebase console)
-  const firebaseConfig = {
-    apiKey: "AIzaSyCrAu7GenmKSaiyVkWXjkcshD4twtYUw14",
-    authDomain: "atma-vani-staging.firebaseapp.com",
-    projectId: "atma-vani-staging",
-    appId: "1:753123327055:web:9c7166d6e1f3cdf7a07e3a"
-    // measurementId optional
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app); window._avDb = db;
-  window._avAuth = auth; // for later steps
-
-  console.log("Firebase init OK:", app.options.projectId);
-  // Consume Google redirect result (if we fell back from popup)
-getRedirectResult(auth).then(res=>{
-  if(res?.user){
-    const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
-    console.log('Google redirect OK:', res.user.email);
-  }
-}).catch(e=>{
-  console.error('Google redirect error:', e?.code, e?.message);
-  alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
-});
-  // Keep the header button in sync with auth state
-function setHeaderForUser(user){
-  const btn = document.getElementById('authTrigger');
-  const so  = document.getElementById('authSignOut');
-  if (btn) {
-    btn.textContent = (user && user.email)
-      ? `Signed in as ${user.email}`
-      : 'Sign in / Create account';
-  }
-  if (so) {
-    // Show Sign out only when a user is signed in
-    so.style.display = (user && user.email) ? 'inline-block' : 'none';
-  }
-}
-// Set once on load (in case Firebase already has a cached user)
-setHeaderForUser(auth.currentUser);
-
-// Then keep it updated on any change
-  async function ensureUserDocAndBadge(user){
-  const b=document.getElementById('quotaBadge'); if(!user||!b) return;
-  const ref = doc(db,'users',user.uid); const snap = await getDoc(ref);
-  const now = new Date(); const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
-  if(!snap.exists()){ await setDoc(ref,{tier:'free',chatCount:0,lastReset:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString()}); b.style.display='inline'; b.textContent='0/100'; return; }
-  let {tier='free',chatCount=0,lastReset=''} = snap.data()||{};
-  if((lastReset||'').slice(0,7)!==ym){ chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(); await updateDoc(ref,{chatCount,lastReset}); }
-  b.style.display='inline'; b.textContent = (tier==='premium') ? '∞' : `${chatCount}/100`;
-}
-function enableLoggedInQuotaGuard(){
-  const OF=window.fetch; window.fetch=async(...a)=>{
-    const u=auth.currentUser, b=document.getElementById('quotaBadge');
-    const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||''); if(!u||!url.includes('/api/chat')) return OF(...a);
-    const ref=doc(db,'users',u.uid), now=new Date(), ym=`${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
-    let snap=await getDoc(ref); if(!snap.exists()) { await setDoc(ref,{tier:'free',chatCount:0,lastReset:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString()}); snap=await getDoc(ref); }
-    let {tier='free',chatCount=0,lastReset=''}=snap.data()||{};
-    if((lastReset||'').slice(0,7)!==ym){ chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(); await updateDoc(ref,{chatCount,lastReset}); }
-    if(tier!=='premium' && chatCount>=100){ alert('Limit reached. Upgrade to Premium for unlimited (manual for now).'); return new Response('{"error":"Free quota reached"}',{status:429,headers:{'content-type':'application/json'}}); }
-    if(window.AV_DEV_OK){ await updateDoc(ref,{chatCount:chatCount+1}); b&&(b.textContent=(tier==='premium')?'∞':`${chatCount+1}/100`); return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}}); }
-    const r=await OF(...a); if(r.ok){ await updateDoc(ref,{chatCount:chatCount+1}); b&&(b.textContent=(tier==='premium')?'∞':`${chatCount+1}/100`);} return r;
-  };
-}
-  onAuthStateChanged(auth, (user) => {
-  console.log("Auth state:", user ? user.email : "signed out");
-  setHeaderForUser(user);
-  if (user) ensureUserDocAndBadge(user);
-    if (user) enableLoggedInQuotaGuard();
-    if (!user) { const b=document.getElementById('quotaBadge'); b&&(b.style.display='inline'); window.avUpdateAnonBadge && window.avUpdateAnonBadge(); }
-});
-  // Create account (Email/Password)
-const crForm = document.getElementById('createForm');
-const crEmail = document.getElementById('crEmail');
-const crPass  = document.getElementById('crPass');
-const crErr   = document.getElementById('crErr');
-
-crForm && crForm.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  if (!crEmail || !crPass) return;
-  crErr.textContent = '';
-  try {
-    const cred = await createUserWithEmailAndPassword(auth, crEmail.value.trim(), crPass.value);
-    console.log('Created user:', cred.user?.email);
-    // Close modal on success
-    const modal = document.getElementById('authModal');
-    if (modal) { modal.hidden = true; modal.style.display = ''; }
-  } catch (err) {
-    const msg = (err && err.message ? err.message.replace(/^Firebase:\s*/,'') : 'Sign-up failed');
-    crErr.textContent = msg;
-  }
-});
-  // Sign in (Email/Password)
-const siForm = document.getElementById('signInForm');
-const siEmail = document.getElementById('siEmail');
-const siPass  = document.getElementById('siPass');
-const siErr   = document.getElementById('siErr');
-
-siForm && siForm.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  if (!siEmail || !siPass) return;
-  siErr.textContent = '';
-  try {
-    const cred = await signInWithEmailAndPassword(auth, siEmail.value.trim(), siPass.value);
-    console.log('Signed in:', cred.user?.email);
-    // Update header immediately
-    setHeaderForUser(cred.user);
-    // Close modal on success
-    const modal = document.getElementById('authModal');
-    if (modal) { modal.hidden = true; modal.style.display = ''; }
-  } catch (err) {
-    const msg = (err && err.message ? err.message.replace(/^Firebase:\s*/,'') : 'Sign-in failed');
-    siErr.textContent = msg;
-  }
-});
-  // ===== AUTH — Sign out (header button) =====
-const soBtn = document.getElementById('authSignOut');
-soBtn && soBtn.addEventListener('click', async ()=>{
-  try {
-    await signOut(auth);
-    setHeaderForUser(null);
-    alert('Signed out');
-  } catch (e) {
-    console.error('Sign out error:', e);
-    alert('Could not sign out. Please try again.');
-  }
-});
-
-// ===== AUTH — Google Sign-In (popup + redirect) with 3C busy states =====
-let _gBusy = false;
-const go = async () => {
-  if (_gBusy) return; _gBusy = true;
-
-  const b1 = document.getElementById('btnGoogle');
-  const b2 = document.getElementById('btnGoogleCr');
-
-  /* 3C busy start — Google (supports <input> & <button>) */
-  if (b1 && !b1.dataset.prev) b1.dataset.prev = ('value' in b1) ? b1.value : b1.innerHTML;
-  if (b2 && !b2.dataset.prev) b2.dataset.prev = ('value' in b2) ? b2.value : b2.innerHTML;
-  if (b1) { if ('value' in b1) b1.value = '• • •'; else b1.innerHTML = '• • •'; }
-  if (b2) { if ('value' in b2) b2.value = '• • •'; else b2.innerHTML = '• • •'; }
-  b1 && (b1.disabled = true); b2 && (b2.disabled = true);
-
-  try {
-    // Try popup first
-    const r = await signInWithPopup(auth, new GoogleAuthProvider());
-    const m = document.getElementById('authModal'); if (m) { m.hidden = true; m.style.display = ''; }
-    console.log('Google OK:', r.user?.email);
-  } catch (e) {
-    console.error('Google error:', e?.code, e?.message);
-    if (e?.code === 'auth/cancelled-popup-request' || e?.code === 'auth/popup-closed-by-user') {
-      await signInWithRedirect(auth, new GoogleAuthProvider());
-      return;
+    function openAuth(){
+      if(!m) return;
+      m.hidden = false;
+      m.style.display = 'grid';
+      const fIn = document.getElementById('signInForm');
+      const fCr = document.getElementById('createForm');
+      if (fIn && fCr){ fIn.style.display='grid'; fCr.style.display='none'; }
     }
-    alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
-  } finally {
-    // 3C busy end — Google
-    const restore = (b) => {
-      if (!b) return;
-      b.disabled = false;
-      const prev = b.dataset.prev;
-      if (prev != null) {
-        if ('value' in b) b.value = prev; else b.innerHTML = prev;
-        b.dataset.prev = '';
+    function closeAuth(){
+      if(!m) return;
+      m.hidden = true;
+      m.style.display = '';
+    }
+
+    t && t.addEventListener('click', openAuth);
+    c && c.addEventListener('click', closeAuth);
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAuth(); });
+    m && m.addEventListener('click', (e)=>{ if(e.target===m) closeAuth(); });
+  </script>
+
+  <!-- Tabs -->
+  <script>
+    window.addEventListener('DOMContentLoaded', ()=>{
+      const tabIn = document.getElementById('tabSignIn');
+      const tabCr = document.getElementById('tabCreate');
+      const fIn   = document.getElementById('signInForm');
+      const fCr   = document.getElementById('createForm');
+
+      const showSignIn = ()=>{ if(fIn&&fCr){ fIn.style.display='grid'; fCr.style.display='none'; } };
+      const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.display='grid'; } };
+
+      tabIn && tabIn.addEventListener('click', showSignIn);
+      tabCr && tabCr.addEventListener('click', showCreate);
+      showSignIn();
+    });
+  </script>
+
+  <!-- Firebase SDK + init -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCrAu7GenmKSaiyVkWXjkcshD4twtYUw14",
+      authDomain: "atma-vani-staging.firebaseapp.com",
+      projectId: "atma-vani-staging",
+      appId: "1:753123327055:web:9c7166d6e1f3cdf7a07e3a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app); window._avDb = db;
+    window._avAuth = auth;
+
+    console.log("Firebase init OK:", app.options.projectId);
+
+    // Consume redirect result (Google)
+    getRedirectResult(auth).then(res=>{
+      if(res?.user){
+        const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
+        console.log('Google redirect OK:', res.user.email);
+      }
+    }).catch(e=>{
+      console.error('Google redirect error:', e?.code, e?.message);
+      alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
+    });
+
+    function setHeaderForUser(user){
+      const btn = document.getElementById('authTrigger');
+      const so  = document.getElementById('authSignOut');
+      if (btn) btn.textContent = (user && user.email) ? `Signed in as ${user.email}` : 'Sign in / Create account';
+      if (so)  so.style.display = (user && user.email) ? 'inline-block' : 'none';
+    }
+    setHeaderForUser(auth.currentUser);
+
+    async function ensureUserDocAndBadge(user){
+      const b=document.getElementById('quotaBadge'); if(!user||!b) return;
+      const ref = doc(db,'users',user.uid); const snap = await getDoc(ref);
+      const now = new Date(); const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
+      if(!snap.exists()){
+        await setDoc(ref,{tier:'free',chatCount:0,lastReset:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString()});
+        b.style.display='inline'; b.textContent='0/100'; return;
+      }
+      let {tier='free',chatCount=0,lastReset=''} = snap.data()||{};
+      if((lastReset||'').slice(0,7)!==ym){
+        chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString();
+        await updateDoc(ref,{chatCount,lastReset});
+      }
+      b.style.display='inline'; b.textContent = (tier==='premium') ? '∞' : `${chatCount}/100`;
+    }
+
+    function enableLoggedInQuotaGuard(){
+      const OF=window.fetch;
+      window.fetch=async(...a)=>{
+        const u=auth.currentUser, b=document.getElementById('quotaBadge');
+        const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');
+        if(!u||!url.includes('/api/chat')) return OF(...a);
+        const ref=doc(db,'users',u.uid), now=new Date(), ym=`${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
+        let snap=await getDoc(ref);
+        if(!snap.exists()) { await setDoc(ref,{tier:'free',chatCount:0,lastReset:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString()}); snap=await getDoc(ref); }
+        let {tier='free',chatCount=0,lastReset=''}=snap.data()||{};
+        if((lastReset||'').slice(0,7)!==ym){ chatCount=0; lastReset=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(); await updateDoc(ref,{chatCount,lastReset}); }
+        if(tier!=='premium' && chatCount>=100){
+          alert('Limit reached. Upgrade to Premium for unlimited (manual for now).');
+          return new Response('{"error":"Free quota reached"}',{status:429,headers:{'content-type':'application/json'}});
+        }
+        if(window.AV_DEV_OK){
+          await updateDoc(ref,{chatCount:chatCount+1});
+          b&&(b.textContent=(tier==='premium')?'∞':`${chatCount+1}/100`);
+          return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}});
+        }
+        const r=await OF(...a);
+        if(r.ok){ await updateDoc(ref,{chatCount:chatCount+1}); b&&(b.textContent=(tier==='premium')?'∞':`${chatCount+1}/100`); }
+        return r;
+      };
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      console.log("Auth state:", user ? user.email : "signed out");
+      setHeaderForUser(user);
+      if (user) ensureUserDocAndBadge(user);
+      if (user) enableLoggedInQuotaGuard();
+      if (!user) { const b=document.getElementById('quotaBadge'); b&&(b.style.display='inline'); window.avUpdateAnonBadge && window.avUpdateAnonBadge(); }
+    });
+
+    // Email/Password create
+    const crForm = document.getElementById('createForm');
+    const crEmail = document.getElementById('crEmail');
+    const crPass  = document.getElementById('crPass');
+    const crErr   = document.getElementById('crErr');
+    crForm && crForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if (!crEmail || !crPass) return;
+      crErr.textContent = '';
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, crEmail.value.trim(), crPass.value);
+        console.log('Created user:', cred.user?.email);
+        const modal = document.getElementById('authModal');
+        if (modal) { modal.hidden = true; modal.style.display = ''; }
+      } catch (err) {
+        const msg = (err && err.message ? err.message.replace(/^Firebase:\s*/,'') : 'Sign-up failed');
+        crErr.textContent = msg;
+      }
+    });
+
+    // Email/Password sign in
+    const siForm = document.getElementById('signInForm');
+    const siEmail = document.getElementById('siEmail');
+    const siPass  = document.getElementById('siPass');
+    const siErr   = document.getElementById('siErr');
+    siForm && siForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if (!siEmail || !siPass) return;
+      siErr.textContent = '';
+      try {
+        const cred = await signInWithEmailAndPassword(auth, siEmail.value.trim(), siPass.value);
+        console.log('Signed in:', cred.user?.email);
+        setHeaderForUser(cred.user);
+        const modal = document.getElementById('authModal');
+        if (modal) { modal.hidden = true; modal.style.display = ''; }
+      } catch (err) {
+        const msg = (err && err.message ? err.message.replace(/^Firebase:\s*/,'') : 'Sign-in failed');
+        siErr.textContent = msg;
+      }
+    });
+
+    // Sign out
+    const soBtn = document.getElementById('authSignOut');
+    soBtn && soBtn.addEventListener('click', async ()=>{
+      try {
+        await signOut(auth);
+        setHeaderForUser(null);
+        alert('Signed out');
+      } catch (e) {
+        alert('Sign out failed: ' + (e?.message || e));
+      }
+    });
+
+    // Google Sign-In (guarded + redirect fallback)
+    let _gBusy=false;
+    const go=async()=>{ if(_gBusy) return; _gBusy=true;
+      const b1=document.getElementById('btnGoogle'), b2=document.getElementById('btnGoogleCr');
+      b1&&(b1.disabled=true); b2&&(b2.disabled=true);
+      try{
+        const r=await signInWithPopup(auth,new GoogleAuthProvider());
+        const m=document.getElementById('authModal'); if(m){m.hidden=true;m.style.display='';}
+        console.log('Google OK:',r.user?.email);
+      }catch(e){
+        console.error('Google error:',e?.code,e?.message);
+        if(e?.code==='auth/cancelled-popup-request' || e?.code==='auth/popup-closed-by-user'){
+          await signInWithRedirect(auth,new GoogleAuthProvider());
+          return;
+        }
+        alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
+      } finally {
+        _gBusy=false; b1&&(b1.disabled=false); b2&&(b2.disabled=false);
       }
     };
-    restore(b1); restore(b2); _gBusy = false;
-  }
-};
+    document.getElementById('btnGoogle')?.addEventListener('click',go);
+    document.getElementById('btnGoogleCr')?.addEventListener('click',go);
+  </script>
 
-document.getElementById('btnGoogle')?.addEventListener('click', go);
-document.getElementById('btnGoogleCr')?.addEventListener('click', go);
-</script>
+  <!-- One-shot header sync on load -->
   <script>
-  // One-shot header sync after page load
-  window.addEventListener('load', ()=>{
-    try{
-      const auth = window._avAuth; // set in the module block
-      const btn  = document.getElementById('authTrigger');
-      const u    = auth && auth.currentUser;
-      if (btn) {
-        btn.textContent = (u && u.email)
-          ? `Signed in as ${u.email}`
-          : 'Sign in / Create account';
-      }
-    }catch(e){}
-  });
-</script>
+    window.addEventListener('load', ()=>{
+      try{
+        const auth = window._avAuth;
+        const btn  = document.getElementById('authTrigger');
+        const u    = auth && auth.currentUser;
+        if (btn) {
+          btn.textContent = (u && u.email) ? `Signed in as ${u.email}` : 'Sign in / Create account';
+        }
+      }catch(e){}
+    });
+  </script>
+
+  <!-- Dev flag + anon quota wrapper -->
   <script>window.AV_DEV_OK = true;</script>
-<script>
-(()=>{const kC='av_anon_counter',kM='av_anon_lastReset',bad=document.getElementById('quotaBadge');
-const u=(window._avAuth&&window._avAuth.currentUser)||null; if(u){ return; }
+  <script>
+    (()=>{const kC='av_anon_counter',kM='av_anon_lastReset',bad=document.getElementById('quotaBadge');
+    const u=(window._avAuth&&window._avAuth.currentUser)||null; if(u){ return; }
 
-// show() → computes and displays anon count
-const show=()=>{ const m=new Date().toISOString().slice(0,7);
-  const l=localStorage.getItem(kM);
-  if(l!==m){ localStorage.setItem(kM,m); localStorage.setItem(kC,'0'); }
-  let c=+(localStorage.getItem(kC)||'0');
-  if(c>10){ c=10; localStorage.setItem(kC,'10'); }
-  if(bad){ bad.style.display='inline'; bad.textContent=`${c}/10`; }
-  return c;
-};
+    const show=()=>{ const m=new Date().toISOString().slice(0,7);
+      const l=localStorage.getItem(kM);
+      if(l!==m){ localStorage.setItem(kM,m); localStorage.setItem(kC,'0'); }
+      let c=+(localStorage.getItem(kC)||'0');
+      if(c>10){ c=10; localStorage.setItem(kC,'10'); }
+      if(bad){ bad.style.display='inline'; bad.textContent=`${c}/10`; }
+      return c;
+    };
 
-// expose for sign-out refresh
-window.avUpdateAnonBadge = show;
+    window.avUpdateAnonBadge = show;
 
-// increment helper (caps at 10)
-const inc=()=>{ let c=show(); if(c<10){ c++; localStorage.setItem(kC,String(c)); bad&&(bad.textContent=`${c}/10`); } };
+    const inc=()=>{ let c=show(); if(c<10){ c++; localStorage.setItem(kC,String(c)); bad&&(bad.textContent=`${c}/10`); } };
 
-const OF=window.fetch;
-window.fetch=async(...a)=>{
-  const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');
-  if(url.includes('/api/chat')){
-    // if now logged-in, skip anon wrapper
-    if((window._avAuth&&window._avAuth.currentUser)) return OF(...a);
+    const OF=window.fetch;
+    window.fetch=async(...a)=>{
+      const url=(typeof a[0]=='string')?a[0]:(a[0]?.url||'');
+      if(url.includes('/api/chat')){
+        if((window._avAuth&&window._avAuth.currentUser)) return OF(...a);
+        if(show()>=10){
+          alert('Limit reached (10/month). Please sign in for 100/month.');
+          return new Response('{"error":"Anon quota reached"}',{status:429,headers:{'content-type':'application/json'}});
+        }
+        if(window.AV_DEV_OK){
+          inc();
+          return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}});
+        }
+        const r=await OF(...a);
+        if(!r.ok){
+          let t=''; try{ t=await r.text(); }catch{}
+          alert(`Chat failed (${r.status}) — ${t.slice(0,140)}`);
+          return r;
+        }
+        inc();
+        return r;
+      }
+      return OF(...a);
+    };
+    show();
+    })();
+  </script>
 
-    // enforce limit BEFORE any dev short-circuit
-    if(show()>=10){
-      alert('Limit reached (10/month). Please sign in for 100/month.');
-      return new Response('{"error":"Anon quota reached"}',{status:429,headers:{'content-type':'application/json'}});
-    }
-
-    // DEV: fake a 200 so UI logic can be tested while backend fails
-    if(window.AV_DEV_OK){
-      inc();
-      return new Response('{"ok":true}',{status:200,headers:{'content-type':'application/json'}});
-    }
-
-    // normal path
-    const r=await OF(...a);
-    if(!r.ok){
-      let t=''; try{ t=await r.text(); }catch{}
-      alert(`Chat failed (${r.status}) — ${t.slice(0,140)}`);
-      return r;
-    }
-    inc();
-    return r;
-  }
-  return OF(...a);
-};
-
-// initial paint of anon badge
-show();
-})();
-</script>
   <!-- Tiny modal (global) -->
-<div id="tinyModal" style="position:fixed;inset:0;display:none;z-index:100000;background:rgba(0,0,0,.45)">
-  <div style="margin:auto;background:#111827;color:#fff;max-width:420px;width:90%;border-radius:14px;padding:14px 16px;box-shadow:0 12px 28px rgba(0,0,0,.35)">
-    <div id="tinyModalMsg" style="white-space:pre-wrap;line-height:1.45"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
-      <button id="tinyModalOk" style="padding:.5rem .75rem;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#111827;font-weight:600">OK</button>
+  <div id="tinyModal" style="position:fixed;inset:0;display:none;z-index:100000;background:rgba(0,0,0,.45)">
+    <div style="margin:auto;background:#111827;color:#fff;max-width:420px;width:90%;border-radius:14px;padding:14px 16px;box-shadow:0 12px 28px rgba(0,0,0,.35)">
+      <div id="tinyModalMsg" style="white-space:pre-wrap;line-height:1.45"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+        <button id="tinyModalOk" style="padding:.5rem .75rem;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#111827;font-weight:600">OK</button>
+      </div>
     </div>
   </div>
-</div>
   <script>
-  (function(){
-    const wrap=document.getElementById('tinyModal'), msg=document.getElementById('tinyModalMsg'), ok=document.getElementById('tinyModalOk');
-    function showModal(text){ msg.textContent=String(text||''); wrap.style.display='grid'; }
-    function hide(){ wrap.style.display='none'; }
-    ok.addEventListener('click',hide); wrap.addEventListener('click',e=>{ if(e.target===wrap) hide(); });
-    document.addEventListener('keydown',e=>{ if(e.key==='Escape') hide(); });
-    window.showModal = showModal;
-    window.alert = showModal; // redirect all alerts here
-  })();
-</script>
+    (function(){
+      const wrap=document.getElementById('tinyModal'), msg=document.getElementById('tinyModalMsg'), ok=document.getElementById('tinyModalOk');
+      function showModal(text){ msg.textContent=String(text||''); wrap.style.display='grid'; }
+      function hide(){ wrap.style.display='none'; }
+      ok.addEventListener('click',hide); wrap.addEventListener('click',e=>{ if(e.target===wrap) hide(); });
+      document.addEventListener('keydown',e=>{ if(e.key==='Escape') hide(); });
+      window.showModal = showModal;
+      window.alert = showModal; // redirect all alerts here
+    })();
+  </script>
 </body>
 </html>
