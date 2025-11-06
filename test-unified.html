@@ -226,58 +226,66 @@
     const speakConciseToggle = $('#speakConcise');
 
     let lastTextUser = '';
-    txt.send.addEventListener('click', async ()=>{
-      // 3C busy start — Send (A)
-const _btn = document.querySelector('#btnSendText');
-if (_btn) {
-  if (!_btn.dataset.busy) { _btn.dataset.prev = _btn.innerHTML; }
-  _btn.disabled = true; _btn.dataset.busy = '1';
-  _btn.innerHTML = '• • •';
-}
-      const messageRaw = (txt.input.value || '').trim();
-      if (!messageRaw) { txt.input.focus(); return; }
-      lastTextUser = messageRaw;
-
-      // language detection + hint so reply matches user language
-      const lang = detectLang(messageRaw);
-      const langHint = (lang === 'hi-IN')
-        ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
-        : " Please reply in English. Please return PLAIN TEXT (no Markdown).";
-      const message = messageRaw + langHint;
-
-      txt.status.textContent = 'Status: thinking…';
-      txt.reply.textContent = '';
-      txt.speakFullBtn.disabled = true;
-      try {
-        const r = await fetch('/api/chat',{
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ message })
-        });
-        if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
-        const data = await r.json();
-        const reply = data?.reply || '';
-        txt.reply.textContent = reply;
-        txt.status.textContent = 'Status: reply received.';
-        txt.speakFullBtn.disabled = !reply;
-
-        if (txt.autoSpeak.checked && reply) {
-          const speechText = await decideSpeechText(messageRaw, reply, speakConciseToggle.checked);
-          const engine = currentEngine();
-          const voice = chooseVoice(engine, lang);
-          await speak(speechText, engine, voice);
-        }
-      } catch (e) {
-        console.error(e);
-        txt.status.textContent = 'Status: failed. Please retry.';
-        alert(`Chat error: ${e.message}`);
-      }
-      // 3C busy end — Send (B)
-finally {
+   // ===== TEXT CHAT — Send button handler (REPLACED 3C final) =====
+txt.send.addEventListener('click', async ()=>{
+  /* 3C busy start — Send (v2: supports <input> & <button>) */
   const _btn = document.querySelector('#btnSendText');
-  if (_btn) { _btn.disabled = false; _btn.dataset.busy=''; _btn.innerHTML = _btn.dataset.prev || _btn.innerHTML; }
-}
-    });
+  if (_btn) {
+    if (!_btn.dataset.busy) { _btn.dataset.prev = ('value' in _btn) ? _btn.value : _btn.innerHTML; }
+    _btn.disabled = true; _btn.dataset.busy = '1';
+    if ('value' in _btn) { _btn.value = '• • •'; } else { _btn.innerHTML = '• • •'; }
+  }
 
+  const messageRaw = (txt.input.value || '').trim();
+  if (!messageRaw) { txt.input.focus(); return; }
+  lastTextUser = messageRaw;
+
+  // language detection + hint so reply matches user language
+  const lang = detectLang(messageRaw);
+  const langHint = (lang === 'hi-IN')
+    ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
+    : " Please reply in English. Please return PLAIN TEXT (no Markdown).";
+  const message = messageRaw + langHint;
+
+  txt.status.textContent = 'Status: thinking…';
+  txt.reply.textContent = '';
+  txt.speakFullBtn.disabled = true;
+
+  try {
+    const r = await fetch('/api/chat',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ message })
+    });
+    if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
+    const data = await r.json();
+    const reply = data?.reply || '';
+    txt.reply.textContent = reply;
+    txt.status.textContent = 'Status: reply received.';
+    txt.speakFullBtn.disabled = !reply;
+
+    if (txt.autoSpeak.checked && reply) {
+      const speechText = await decideSpeechText(messageRaw, reply, speakConciseToggle.checked);
+      const engine = currentEngine();
+      const voice = chooseVoice(engine, lang);
+      await speak(speechText, engine, voice);
+    }
+  } catch (e) {
+    console.error(e);
+    txt.status.textContent = 'Status: failed. Please retry.';
+    alert(`Chat error: ${e.message}`);
+  } finally {
+    /* 3C busy end — Send (v2) */
+    const _btn2 = document.querySelector('#btnSendText');
+    if (_btn2) {
+      _btn2.disabled = false; _btn2.dataset.busy = '';
+      const prev = _btn2.dataset.prev;
+      if (prev != null) {
+        if ('value' in _btn2) { _btn2.value = prev; } else { _btn2.innerHTML = prev; }
+        _btn2.dataset.prev = '';
+      }
+    }
+  }
+});
     txt.speakFullBtn.addEventListener('click', async ()=>{
       const reply = txt.reply.textContent.trim();
       if (!reply) return;
@@ -731,11 +739,13 @@ if (b2) b2.innerHTML = '• • •';
   }
   alert(`Google sign-in failed: ${e?.code||''} ${e?.message||e}`);
 } finally {
-  // 3C busy end — Google (D)
-  const b1 = document.getElementById('btnGoogle'), b2 = document.getElementById('btnGoogleCr');
-  if (b1) { b1.disabled = false; b1.innerHTML = b1.dataset.prev || b1.innerHTML; b1.dataset.prev = ''; }
-  if (b2) { b2.disabled = false; b2.innerHTML = b2.dataset.prev || b2.innerHTML; b2.dataset.prev = ''; }
-  _gBusy = false;
+  // 3C busy end — Google (D v2)
+  const b1=document.getElementById('btnGoogle'), b2=document.getElementById('btnGoogleCr');
+  const restore=(b)=>{ if(!b) return; b.disabled=false;
+    const prev=b.dataset.prev;
+    if (prev!=null) { if ('value' in b) b.value=prev; else b.innerHTML=prev; b.dataset.prev=''; }
+  };
+  restore(b1); restore(b2); _gBusy=false;
 }
 };
 document.getElementById('btnGoogle')?.addEventListener('click', go);
