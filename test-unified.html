@@ -226,9 +226,14 @@
     const speakConciseToggle = $('#speakConcise');
 
     let lastTextUser = '';
- // ===== TEXT CHAT — Send button handler (3C final) =====
+ // ===== TEXT CHAT — Send button handler (3C final v4) =====
 txt.send.addEventListener('click', async ()=>{
-  /* 3C busy start — Send (use txt.send directly; supports <button>/<input>) */
+  // 1) Read & validate first (do NOT disable yet)
+  const messageRaw = (txt.input.value || '').trim();
+  if (!messageRaw) { txt.input.focus(); return; }
+  lastTextUser = messageRaw;
+
+  // 2) Now go busy (dots + disable) using txt.send directly
   const _btn = txt.send;
   if (_btn) {
     if (!_btn.dataset.busy) { _btn.dataset.prev = ('value' in _btn) ? _btn.value : _btn.innerHTML; }
@@ -236,11 +241,7 @@ txt.send.addEventListener('click', async ()=>{
     if ('value' in _btn) { _btn.value = '• • •'; } else { _btn.innerHTML = '• • •'; }
   }
 
-  const messageRaw = (txt.input.value || '').trim();
-  if (!messageRaw) { txt.input.focus(); return; }
-  lastTextUser = messageRaw;
-
-  // language detection + hint so reply matches user language
+  // Language hint so reply matches user language
   const lang = detectLang(messageRaw);
   const langHint = (lang === 'hi-IN')
     ? " कृपया उत्तर हिंदी में दें। कृपया साधारण टेक्स्ट में उत्तर दें—कोई मार्कडाउन नहीं।"
@@ -252,13 +253,18 @@ txt.send.addEventListener('click', async ()=>{
   txt.speakFullBtn.disabled = true;
 
   try {
-    const r = await fetch('/api/chat',{
-      method:'POST', headers:{'Content-Type':'application/json'},
+    const r = await fetch('/api/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ message })
     });
-    if (!r.ok) { const e=await safeJson(r); throw new Error(e?.error || `HTTP ${r.status}`); }
+    if (!r.ok) {
+      const e = await safeJson(r);
+      throw new Error(e?.error || `HTTP ${r.status}`);
+    }
     const data = await r.json();
     const reply = data?.reply || '';
+
     txt.reply.textContent = reply;
     txt.status.textContent = 'Status: reply received.';
     txt.speakFullBtn.disabled = !reply;
@@ -274,7 +280,7 @@ txt.send.addEventListener('click', async ()=>{
     txt.status.textContent = 'Status: failed. Please retry.';
     alert(`Chat error: ${e.message}`);
   } finally {
-    /* 3C busy end — Send */
+    // Always restore the button, even on early errors
     const _btn2 = txt.send;
     if (_btn2) {
       _btn2.disabled = false; _btn2.dataset.busy = '';
