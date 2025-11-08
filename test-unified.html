@@ -536,7 +536,15 @@
       const tabCr = document.getElementById('tabCreate');
       const fIn   = document.getElementById('signInForm');
       const fCr   = document.getElementById('createForm');
-
+      // 3D: Google-only — hide Create tab
+if (tabCr) tabCr.style.display = 'none';
+      // 3D: Google-only — hide email/password path on Sign in
+if (fIn) {
+  ['siEmail','siPass','siErr'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+  const siBtn = fIn.querySelector('button[type="submit"]'); if (siBtn) siBtn.style.display='none';
+}
+// 3D: also hide Create form entirely (optional)
+if (fCr) fCr.style.display = 'none';
       const showSignIn = ()=>{ if(fIn&&fCr){ fIn.style.display='grid'; fCr.style.display='none'; } };
       const showCreate = ()=>{ if(fIn&&fCr){ fIn.style.display='none'; fCr.style.display='grid'; } };
 
